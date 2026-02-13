@@ -10,121 +10,186 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { bottomPrintingSample, type QualityStatus, type RowDeviationRecord } from '../data/bottomPrintingSample';
 
-const OK = '#2D68C4';
-const CHECK = '#F59E0B';
-const NG = '#EF4444';
-
-const CHECK_LIMIT = 0.12;
-const NG_LIMIT = 0.15;
-
-type RowDeviation = {
-  row: number;
-  leftRight: number;
-  upDown: number;
+const palette = {
+  bg: '#0B1020',
+  panel: '#151C33',
+  panelStrong: '#1B2544',
+  text: '#E8EEFF',
+  textMuted: '#AAB7DE',
+  border: '#2A3661',
+  ok: '#2D68C4',
+  check: '#F59E0B',
+  ng: '#EF4444',
 };
 
-const rowData: RowDeviation[] = [
-  { row: 1, leftRight: -0.0022, upDown: -0.019 },
-  { row: 2, leftRight: -0.0343, upDown: -0.0425 },
-  { row: 3, leftRight: -0.0271, upDown: -0.0243 },
-  { row: 4, leftRight: -0.0189, upDown: -0.0496 },
-  { row: 5, leftRight: 0.016, upDown: -0.031 },
-  { row: 6, leftRight: 0.023, upDown: 0.018 },
-  { row: 7, leftRight: -0.041, upDown: 0.061 },
-  { row: 8, leftRight: 0.083, upDown: -0.02 },
-  { row: 9, leftRight: 0.097, upDown: 0.114 },
-  { row: 10, leftRight: 0.121, upDown: -0.108 },
-  { row: 11, leftRight: 0.136, upDown: 0.129 },
-  { row: 12, leftRight: -0.154, upDown: -0.142 },
-];
+type RowSummary = RowDeviationRecord & {
+  worst: number;
+  status: QualityStatus;
+};
 
-const getStatus = (value: number): 'OK' | 'CHECK' | 'NG' => {
+const getStatus = (value: number, checkLimit: number, ngLimit: number): QualityStatus => {
   const abs = Math.abs(value);
-  if (abs >= NG_LIMIT) return 'NG';
-  if (abs >= CHECK_LIMIT) return 'CHECK';
+  if (abs >= ngLimit) return 'NG';
+  if (abs >= checkLimit) return 'CHECK';
   return 'OK';
 };
 
-const getColor = (status: 'OK' | 'CHECK' | 'NG') => {
-  if (status === 'NG') return NG;
-  if (status === 'CHECK') return CHECK;
-  return OK;
+const getColor = (status: QualityStatus) => {
+  if (status === 'NG') return palette.ng;
+  if (status === 'CHECK') return palette.check;
+  return palette.ok;
 };
 
 const directionText = (value: number, axis: '좌우' | '상하') => {
   if (value === 0) return '기준';
-  if (axis === '좌우') return value > 0 ? '+ (우측)' : '- (좌측)';
-  return value > 0 ? '+ (위)' : '- (아래)';
+  if (axis === '좌우') return value > 0 ? '우→ 치우침' : '←좌 치우침';
+  return value > 0 ? '↑상 치우침' : '하↓ 치우침';
+};
+
+const correctionText = (value: number, axis: '좌우' | '상하') => {
+  if (value === 0) return '보정 불필요';
+  if (axis === '좌우') return value > 0 ? '←좌 방향 보정' : '우→ 방향 보정';
+  return value > 0 ? '하↓ 방향 보정' : '↑상 방향 보정';
+};
+
+const summarizeRows = (rows: RowDeviationRecord[], checkLimit: number, ngLimit: number): RowSummary[] => {
+  return rows.map((row) => {
+    const worst = Math.max(Math.abs(row.leftRightMm), Math.abs(row.upDownMm));
+    return {
+      ...row,
+      worst,
+      status: getStatus(worst, checkLimit, ngLimit),
+    };
+  });
+};
+
+const buildComments = (rows: RowSummary[], checkLimit: number) => {
+  const ngRows = rows.filter((row) => row.status === 'NG');
+  const checkRows = rows.filter((row) => row.status === 'CHECK');
+  const sortedByWorst = [...rows].sort((a, b) => b.worst - a.worst);
+  const topRisk = sortedByWorst[0];
+
+  const comments: string[] = [];
+
+  if (ngRows.length > 0) {
+    const target = ngRows[0];
+    const axis = Math.abs(target.leftRightMm) >= Math.abs(target.upDownMm) ? '좌우' : '상하';
+    const value = axis === '좌우' ? target.leftRightMm : target.upDownMm;
+
+    comments.push(
+      `Row ${target.row} ${axis} 편차 ${value.toFixed(3)}mm는 NG 구간입니다. ${correctionText(value, axis)}을 1순위로 적용하세요.`
+    );
+  }
+
+  if (checkRows.length > 0) {
+    const rowNumbers = checkRows.map((row) => row.row).join(', ');
+    comments.push(
+      `CHECK 구간 Row (${rowNumbers})는 기준(${checkLimit.toFixed(2)}mm) 근접 상태입니다. 생산 전 추가 1시트 검증을 권장합니다.`
+    );
+  }
+
+  const nearLimitRows = rows.filter((row) => row.worst >= checkLimit * 0.9 && row.status === 'OK').map((row) => row.row);
+  if (nearLimitRows.length > 0) {
+    comments.push(`OK 판정이지만 한계 근접 Row (${nearLimitRows.join(', ')})는 집중 모니터링 대상입니다.`);
+  }
+
+  if (topRisk) {
+    comments.push(`최대 리스크 Row는 ${topRisk.row}번(최대편차 ${topRisk.worst.toFixed(3)}mm)입니다. 교정 후 Before/After 비교를 기록하세요.`);
+  }
+
+  return comments;
 };
 
 export default function BottomPrintingTab() {
+  const { limits, rows, sheetId, collectedAt, source } = bottomPrintingSample;
+  const rowSummaries = summarizeRows(rows, limits.checkMm, limits.ngMm);
+  const comments = buildComments(rowSummaries, limits.checkMm);
+
   return (
-    <div style={{ padding: 24, display: 'grid', gap: 20, fontFamily: 'sans-serif' }}>
-      <section style={{ border: '1px solid #d5d9ef', borderRadius: 12, padding: 16, background: '#EDF1FE' }}>
-        <h2 style={{ margin: '0 0 8px', color: '#171C8F' }}>AI 코멘트</h2>
+    <div
+      style={{
+        padding: 24,
+        display: 'grid',
+        gap: 20,
+        fontFamily: 'Pretendard, sans-serif',
+        background: palette.bg,
+        color: palette.text,
+        minHeight: '100vh',
+      }}
+    >
+      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.panelStrong }}>
+        <h2 style={{ margin: '0 0 8px', fontSize: 24 }}>하판 프린팅 실시간 판단</h2>
+        <p style={{ margin: '0 0 6px', color: palette.textMuted }}>
+          시트 {sheetId} · 수집시각 {new Date(collectedAt).toLocaleString('ko-KR')} · 데이터 {source.fileName}
+        </p>
+        <p style={{ margin: 0, color: palette.textMuted }}>기준: CHECK ±{limits.checkMm}mm / NG ±{limits.ngMm}mm</p>
+      </section>
+
+      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.panel }}>
+        <h2 style={{ margin: '0 0 8px' }}>AI 코멘트 (데이터 기반 자동생성)</h2>
         <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
-          <li>Row 12 좌우 편차가 -0.154mm로 NG입니다. 우측 방향 보정 검토가 필요합니다.</li>
-          <li>Row 11은 CHECK 구간(±0.12mm 이상)입니다. 생산 전 TEST 1시트 추가 권장합니다.</li>
-          <li>상하 편차는 전반적으로 안정적이며, Row 9~12 구간 집중 점검을 권장합니다.</li>
+          {comments.map((comment) => (
+            <li key={comment}>{comment}</li>
+          ))}
         </ul>
       </section>
 
-      <section style={{ border: '1px solid #e3e6f7', borderRadius: 12, padding: 16 }}>
-        <h2 style={{ marginTop: 0, color: '#171C8F' }}>Row 1~12 편차 테이블</h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
+      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.panel }}>
+        <h2 style={{ marginTop: 0 }}>Row 1~12 편차 테이블</h2>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: 16 }}>
           <thead>
             <tr>
               <th>Row</th>
               <th>좌우 편차 (←좌 / 우→)</th>
               <th>상하 편차 (↑상 / 하↓)</th>
-              <th>좌우 방향</th>
-              <th>상하 방향</th>
-              <th>판정</th>
+              <th>좌우 판정 방향</th>
+              <th>상하 판정 방향</th>
+              <th>최종 판정</th>
             </tr>
           </thead>
           <tbody>
-            {rowData.map((row) => {
-              const worst = Math.max(Math.abs(row.leftRight), Math.abs(row.upDown));
-              const status = getStatus(worst);
-              return (
-                <tr key={row.row}>
-                  <td>{row.row}</td>
-                  <td>{row.leftRight.toFixed(3)} mm</td>
-                  <td>{row.upDown.toFixed(3)} mm</td>
-                  <td>{directionText(row.leftRight, '좌우')}</td>
-                  <td>{directionText(row.upDown, '상하')}</td>
-                  <td style={{ color: getColor(status), fontWeight: 700 }}>{status}</td>
-                </tr>
-              );
-            })}
+            {rowSummaries.map((row) => (
+              <tr key={row.row} style={{ borderTop: `1px solid ${palette.border}`, height: 44 }}>
+                <td>{row.row}</td>
+                <td>{row.leftRightMm.toFixed(3)} mm</td>
+                <td>{row.upDownMm.toFixed(3)} mm</td>
+                <td>{directionText(row.leftRightMm, '좌우')}</td>
+                <td>{directionText(row.upDownMm, '상하')}</td>
+                <td style={{ color: getColor(row.status), fontWeight: 700 }}>{row.status}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </section>
 
-      <section style={{ border: '1px solid #e3e6f7', borderRadius: 12, padding: 16 }}>
-        <h2 style={{ marginTop: 0, color: '#171C8F' }}>Row별 편차 막대차트 + 허용범위</h2>
+      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.panel }}>
+        <h2 style={{ marginTop: 0 }}>Row별 편차 막대차트 + 허용범위</h2>
         <div style={{ width: '100%', height: 420 }}>
           <ResponsiveContainer>
-            <BarChart data={rowData} margin={{ top: 20, right: 24, left: 12, bottom: 12 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="row" />
-              <YAxis domain={[-0.2, 0.2]} tickFormatter={(v) => `${v.toFixed(2)}mm`} />
-              <Tooltip formatter={(value: number) => `${value.toFixed(3)} mm`} />
-              <Legend />
-              <ReferenceLine y={CHECK_LIMIT} stroke={CHECK} strokeDasharray="5 5" label="+0.12" />
-              <ReferenceLine y={-CHECK_LIMIT} stroke={CHECK} strokeDasharray="5 5" label="-0.12" />
-              <ReferenceLine y={NG_LIMIT} stroke={NG} strokeDasharray="5 5" label="+0.15" />
-              <ReferenceLine y={-NG_LIMIT} stroke={NG} strokeDasharray="5 5" label="-0.15" />
+            <BarChart data={rowSummaries} margin={{ top: 20, right: 24, left: 12, bottom: 12 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#34406F" />
+              <XAxis dataKey="row" tick={{ fill: palette.textMuted, fontSize: 13 }} />
+              <YAxis domain={[-0.2, 0.2]} tickFormatter={(v) => `${v.toFixed(2)}mm`} tick={{ fill: palette.textMuted, fontSize: 13 }} />
+              <Tooltip
+                contentStyle={{ background: '#0F1730', border: `1px solid ${palette.border}`, color: palette.text }}
+                formatter={(value: number, name) => [`${value.toFixed(3)} mm (${name})`, `${getStatus(value, limits.checkMm, limits.ngMm)}`]}
+              />
+              <Legend wrapperStyle={{ color: palette.textMuted }} />
+              <ReferenceLine y={limits.checkMm} stroke={palette.check} strokeDasharray="5 5" label={{ value: '+CHECK', fill: palette.check }} />
+              <ReferenceLine y={-limits.checkMm} stroke={palette.check} strokeDasharray="5 5" label={{ value: '-CHECK', fill: palette.check }} />
+              <ReferenceLine y={limits.ngMm} stroke={palette.ng} strokeDasharray="5 5" label={{ value: '+NG', fill: palette.ng }} />
+              <ReferenceLine y={-limits.ngMm} stroke={palette.ng} strokeDasharray="5 5" label={{ value: '-NG', fill: palette.ng }} />
 
-              <Bar dataKey="leftRight" name="좌우 편차">
-                {rowData.map((r) => (
-                  <Cell key={`lr-${r.row}`} fill={getColor(getStatus(r.leftRight))} />
+              <Bar dataKey="leftRightMm" name="좌우 편차">
+                {rowSummaries.map((row) => (
+                  <Cell key={`lr-${row.row}`} fill={getColor(getStatus(row.leftRightMm, limits.checkMm, limits.ngMm))} />
                 ))}
               </Bar>
-              <Bar dataKey="upDown" name="상하 편차">
-                {rowData.map((r) => (
-                  <Cell key={`ud-${r.row}`} fill={getColor(getStatus(r.upDown))} />
+              <Bar dataKey="upDownMm" name="상하 편차">
+                {rowSummaries.map((row) => (
+                  <Cell key={`ud-${row.row}`} fill={getColor(getStatus(row.upDownMm, limits.checkMm, limits.ngMm))} />
                 ))}
               </Bar>
             </BarChart>
