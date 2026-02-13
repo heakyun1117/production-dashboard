@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-import { getColor, mmText, palette, Status } from '../utils/printingCommon';
+import { DivergingBarCell, getColor, mmText, palette, Status } from '../utils/printingCommon';
 
 type LineKey = 'A라인' | 'B라인';
 type Position = '우' | '중' | '좌';
@@ -50,31 +50,6 @@ const getSlittingStatus = (value: number): Status => {
 };
 
 const marginRate = (value: number) => ((NG_LIMIT - Math.abs(value)) / NG_LIMIT) * 100;
-
-function InlineBar({ value }: { value: number }) {
-  const status = getSlittingStatus(value);
-  const scale = 0.12;
-  const half = 68;
-  const clamped = Math.max(-scale, Math.min(scale, value));
-  const width = Math.max((Math.abs(clamped) / scale) * half, 1);
-  const left = clamped >= 0 ? half : half - width;
-
-  const toPx = (target: number) => half + (target / scale) * half;
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
-      <div style={{ position: 'relative', width: half * 2, height: 14, background: palette.bg, borderRadius: 999, border: `1px solid ${palette.border}` }}>
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: half, width: 1, background: '#8aa0cf' }} />
-        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(-CHECK_LIMIT), borderLeft: `1px dashed ${palette.check}` }} />
-        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(CHECK_LIMIT), borderLeft: `1px dashed ${palette.check}` }} />
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: toPx(-NG_LIMIT), borderLeft: `1px dashed ${palette.ng}` }} />
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: toPx(NG_LIMIT), borderLeft: `1px dashed ${palette.ng}` }} />
-        <div style={{ position: 'absolute', top: 2, height: 10, left, width, borderRadius: 999, background: getColor(status) }} />
-      </div>
-      <span style={{ minWidth: 70, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{mmText(value)}</span>
-    </div>
-  );
-}
 
 function buildComments(data: SlitterMeasurement[]): string[] {
   const comments: string[] = [];
@@ -138,7 +113,7 @@ function WidthTable({ title, data, keyName }: { title: string; data: SlitterMeas
                 {points.map((point) => (
                   <Fragment key={`${title}-${row}-${point.position}`}>
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>{point[keyName].toFixed(4)}</td>
-                    <td style={{ padding: '8px 0' }}><InlineBar value={point[keyName]} /></td>
+                    <td style={{ padding: '8px 0' }}><DivergingBarCell value={point[keyName]} scale={0.12} checkLimit={CHECK_LIMIT} ngLimit={NG_LIMIT} showDirection axis="좌우" /></td>
                   </Fragment>
                 ))}
                 <td style={{ color: margin >= 50 ? palette.green : margin >= 20 ? palette.check : palette.ng, fontWeight: 700 }}>{margin.toFixed(1)}%</td>
