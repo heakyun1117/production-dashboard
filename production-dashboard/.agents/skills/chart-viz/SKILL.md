@@ -1,3 +1,12 @@
+---
+name: chart-viz
+description: >
+  대시보드 시각화 컴포넌트 스킬. InlineDeviationBar, BiasCompass, Before/After 차트,
+  다크 테마 규칙에 사용. 모든 차트/바/나침반 생성 시 활성화.
+prerequisite-skills:
+  - slug: dashboard-ui
+    reason: "다크 테마 팔레트와 스타일 규칙 필요"
+---
 # chart-viz SKILL
 
 ## 목적

@@ -1,3 +1,9 @@
+---
+name: dashboard-ui
+description: >
+  대시보드 UI 설계 스킬. 다크 테마 팔레트, 테이블/카드/패널 스타일,
+  AI 코멘트 패널, 요약카드 레이아웃에 사용.
+---
 # dashboard-ui SKILL
 
 ## 목적
