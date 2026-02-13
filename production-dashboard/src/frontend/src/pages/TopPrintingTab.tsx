@@ -43,7 +43,7 @@ const marginColor = (margin: number) => {
   return palette.ng;
 };
 
-const trayRows: Record<'트레이1' | '트레이2', RowDeviation[]> = {
+export const topPrintingTrayRows: Record<'트레이1' | '트레이2', RowDeviation[]> = {
     트레이1: [
       { row: 1, leftRight: -0.008, upDown: -0.022 },
       { row: 2, leftRight: -0.031, upDown: -0.038 },
@@ -79,12 +79,12 @@ const zeroOffsets: SimulationOffsets = { q: 0, leftRightOffset: 0, upDownOffset:
 export default function TopPrintingTab() {
   const [selectedTray, setSelectedTray] = useState<TrayKey>('전체');
   const rows = useMemo(() => {
-    if (selectedTray === '트레이1') return trayRows.트레이1;
-    if (selectedTray === '트레이2') return trayRows.트레이2;
-    return trayRows.트레이1.map((row, idx) => ({
+    if (selectedTray === '트레이1') return topPrintingTrayRows.트레이1;
+    if (selectedTray === '트레이2') return topPrintingTrayRows.트레이2;
+    return topPrintingTrayRows.트레이1.map((row, idx) => ({
       row: row.row,
-      leftRight: Number(((row.leftRight + (trayRows.트레이2[idx]?.leftRight ?? 0)) / 2).toFixed(4)),
-      upDown: Number(((row.upDown + (trayRows.트레이2[idx]?.upDown ?? 0)) / 2).toFixed(4)),
+      leftRight: Number(((row.leftRight + (topPrintingTrayRows.트레이2[idx]?.leftRight ?? 0)) / 2).toFixed(4)),
+      upDown: Number(((row.upDown + (topPrintingTrayRows.트레이2[idx]?.upDown ?? 0)) / 2).toFixed(4)),
     }));
   }, [selectedTray]);
   const hasData = rows.length > 0;
@@ -92,8 +92,8 @@ export default function TopPrintingTab() {
   const recommended = useMemo(() => calcRecommendedOffsets(rows), [rows]);
   const [copied, setCopied] = useState(false);
   const [trayInputs, setTrayInputs] = useState<Record<TrayKey, { equipmentOffsets: SimulationOffsets; secondaryOffsets: SimulationOffsets; offsets: SimulationOffsets }>>({
-    트레이1: { equipmentOffsets: zeroOffsets, secondaryOffsets: calcRecommendedOffsets(trayRows.트레이1), offsets: calcRecommendedOffsets(trayRows.트레이1) },
-    트레이2: { equipmentOffsets: zeroOffsets, secondaryOffsets: calcRecommendedOffsets(trayRows.트레이2), offsets: calcRecommendedOffsets(trayRows.트레이2) },
+    트레이1: { equipmentOffsets: zeroOffsets, secondaryOffsets: calcRecommendedOffsets(topPrintingTrayRows.트레이1), offsets: calcRecommendedOffsets(topPrintingTrayRows.트레이1) },
+    트레이2: { equipmentOffsets: zeroOffsets, secondaryOffsets: calcRecommendedOffsets(topPrintingTrayRows.트레이2), offsets: calcRecommendedOffsets(topPrintingTrayRows.트레이2) },
     전체: { equipmentOffsets: zeroOffsets, secondaryOffsets: calcRecommendedOffsets(rows), offsets: calcRecommendedOffsets(rows) },
   });
 
@@ -137,8 +137,8 @@ export default function TopPrintingTab() {
   const comments = useMemo(() => {
     const base = buildComments(rowSummaries);
     if (selectedTray === '전체') {
-      const tray1 = trayRows.트레이1;
-      const tray2 = trayRows.트레이2;
+      const tray1 = topPrintingTrayRows.트레이1;
+      const tray2 = topPrintingTrayRows.트레이2;
       if (tray1.length > 0 && tray2.length > 0) {
         const avgTray1 = tray1.reduce((acc, row) => acc + Math.max(Math.abs(row.leftRight), Math.abs(row.upDown)), 0) / tray1.length;
         const avgTray2 = tray2.reduce((acc, row) => acc + Math.max(Math.abs(row.leftRight), Math.abs(row.upDown)), 0) / tray2.length;
