@@ -168,7 +168,7 @@ export default function BottomPrintingTab() {
           <div style={{ fontSize: 32, fontWeight: 700 }}>{statusCounts.NG}</div>
         </article>
         <article style={{ background: palette.card, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}` }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: 14, color: palette.green }}>시트 정보</h3>
+          <h3 style={{ margin: '0 0 8px', fontSize: 14, color: palette.green }}>시트 정보 (3도 인쇄: 카본→절연→실버)</h3>
           <div style={{ fontSize: 13, color: palette.textDim, lineHeight: 1.6 }}>
             <div>시트ID: {sheetInfo.sheetId}</div>
             <div>수집시각: {sheetInfo.collectedAt}</div>
