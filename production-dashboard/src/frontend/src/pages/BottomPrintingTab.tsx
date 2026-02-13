@@ -43,7 +43,7 @@ const marginColor = (margin: number) => {
   return palette.ng;
 };
 
-const lineRows: Record<LineKey, RowDeviation[]> = {
+export const bottomPrintingLineRows: Record<LineKey, RowDeviation[]> = {
   A라인: [
     { row: 1, leftRight: -0.0022, upDown: -0.019 },
     { row: 2, leftRight: -0.0343, upDown: -0.0425 },
@@ -64,7 +64,7 @@ const lineRows: Record<LineKey, RowDeviation[]> = {
 
 export default function BottomPrintingTab() {
   const [selectedLine, setSelectedLine] = useState<LineKey>('A라인');
-  const rows = useMemo(() => lineRows[selectedLine] ?? [], [selectedLine]);
+  const rows = useMemo(() => bottomPrintingLineRows[selectedLine] ?? [], [selectedLine]);
   const hasData = rows.length > 0;
 
   const recommended = useMemo(() => calcRecommendedOffsets(rows), [rows]);

@@ -6,16 +6,17 @@ import RowSlittingTab from './pages/RowSlittingTab';
 import TopPrintingTab from './pages/TopPrintingTab';
 import ManualAssemblyTab from './pages/ManualAssemblyTab';
 import AssemblyInspectionTab from './pages/AssemblyInspectionTab';
+import ManagerDashboardTab from './pages/ManagerDashboardTab';
 
-type TabKey = '하판 프린팅' | '상판 프린팅' | '워킹면적 검사' | '로우슬리팅' | '분주' | '수동조립기' | '조립/검사';
+type TabKey = '관리자 종합' | '하판 프린팅' | '상판 프린팅' | '워킹면적 검사' | '로우슬리팅' | '분주' | '수동조립기' | '조립/검사';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>('하판 프린팅');
+  const [activeTab, setActiveTab] = useState<TabKey>('관리자 종합');
 
   return (
     <div style={{ minHeight: '100vh', background: '#020617' }}>
       <nav style={{ display: 'flex', gap: 8, padding: 12, borderBottom: '1px solid #334155', background: '#0F172A' }}>
-        {(['하판 프린팅', '상판 프린팅', '워킹면적 검사', '로우슬리팅', '분주', '수동조립기', '조립/검사'] as TabKey[]).map((tab) => (
+        {(['관리자 종합', '하판 프린팅', '상판 프린팅', '워킹면적 검사', '로우슬리팅', '분주', '수동조립기', '조립/검사'] as TabKey[]).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -33,6 +34,7 @@ export default function App() {
           </button>
         ))}
       </nav>
+      {activeTab === '관리자 종합' && <ManagerDashboardTab onNavigateProcess={(tab) => setActiveTab(tab)} />}
       {activeTab === '하판 프린팅' && <BottomPrintingTab />}
       {activeTab === '상판 프린팅' && <TopPrintingTab />}
       {activeTab === '워킹면적 검사' && <ElectrodeAreaTab />}

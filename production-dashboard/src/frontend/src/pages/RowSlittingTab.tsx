@@ -16,7 +16,7 @@ type SlitterMeasurement = {
 const CHECK_LIMIT = 0.08;
 const NG_LIMIT = 0.1;
 
-const slitterDataA: SlitterMeasurement[] = [
+export const slitterDataA: SlitterMeasurement[] = [
   { row: 1, position: '우', totalWidth: 0.0822, dieWidth: 0.065 },
   { row: 1, position: '중', totalWidth: 0.078, dieWidth: 0.1004 },
   { row: 1, position: '좌', totalWidth: 0.0938, dieWidth: 0.0531 },
@@ -28,7 +28,7 @@ const slitterDataA: SlitterMeasurement[] = [
   { row: 12, position: '좌', totalWidth: 0.0732, dieWidth: 0.0475 },
 ];
 
-const slitterDataB: SlitterMeasurement[] = slitterDataA.map((item, index) => ({
+export const slitterDataB: SlitterMeasurement[] = slitterDataA.map((item, index) => ({
   ...item,
   totalWidth: Number((item.totalWidth - 0.008 + (index % 3) * 0.003).toFixed(4)),
   dieWidth: Number((item.dieWidth - 0.01 + ((index + 1) % 3) * 0.002).toFixed(4)),
