@@ -43,6 +43,15 @@ type RowSummary = RowDeviation & {
   status: Status;
 };
 
+type Status = 'OK' | 'CHECK' | 'NG';
+type LineKey = 'A라인' | 'B라인';
+
+type SimulationOffsets = {
+  q: number;
+  leftRightOffset: number;
+  upDownOffset: number;
+};
+
 const rowData: RowDeviation[] = [
   { row: 1, leftRight: -0.0022, upDown: -0.019 },
   { row: 2, leftRight: -0.0343, upDown: -0.0425 },
@@ -58,14 +67,6 @@ const rowData: RowDeviation[] = [
   { row: 12, leftRight: -0.154, upDown: -0.142 },
 ];
 
-type Status = 'OK' | 'CHECK' | 'NG';
-
-type SimulationOffsets = {
-  q: number;
-  leftRightOffset: number;
-  upDownOffset: number;
-};
-
 const getStatus = (value: number): Status => {
   const abs = Math.abs(value);
   if (abs >= NG_LIMIT) return 'NG';
@@ -80,6 +81,15 @@ const getColor = (status: Status) => {
 };
 
 const mmText = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(3)} mm`;
+const plainMmText = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(3)}`;
+
+const marginRate = (deviation: number, limit: number = NG_LIMIT): number => ((limit - Math.abs(deviation)) / limit) * 100;
+
+const getMarginColor = (margin: number) => {
+  if (margin >= 50) return palette.green;
+  if (margin >= 20) return palette.check;
+  return palette.ng;
+};
 
 const axisDirectionText = (value: number, axis: '좌우' | '상하') => {
   if (Math.abs(value) < 0.001) return '기준';
@@ -101,6 +111,26 @@ const toRowSummary = (row: RowDeviation): RowSummary => {
     worst,
     worstAxis,
     status: getStatus(worst),
+  };
+};
+
+const calcRecommendedOffsets = (rows: RowDeviation[]): SimulationOffsets => {
+  if (rows.length === 0) {
+    return { q: 0, leftRightOffset: 0, upDownOffset: 0 };
+  }
+
+  const avgLeftRight = rows.reduce((acc, row) => acc + row.leftRight, 0) / rows.length;
+  const avgUpDown = rows.reduce((acc, row) => acc + row.upDown, 0) / rows.length;
+
+  const center = (rows.length + 1) / 2;
+  const slopeNumerator = rows.reduce((acc, row) => acc + (row.row - center) * row.leftRight, 0);
+  const slopeDenominator = rows.reduce((acc, row) => acc + (row.row - center) ** 2, 0);
+  const slope = slopeDenominator === 0 ? 0 : slopeNumerator / slopeDenominator;
+
+  return {
+    q: Number((-slope * 0.9).toFixed(3)),
+    leftRightOffset: Number((-avgLeftRight).toFixed(3)),
+    upDownOffset: Number((-avgUpDown).toFixed(3)),
   };
 };
 
@@ -134,24 +164,18 @@ function buildComments(rows: RowSummary[]): string[] {
     comments.push(`📈 상하 평균 편차 ${mmText(avgUpDown)} (${axisDirectionText(avgUpDown, '상하')}) 경향. ${correctionText(-avgUpDown, '상하')} 보정 권장.`);
   }
 
+  if (ngRows.length > 0 || checkRows.length >= 3) {
+    const rec = calcRecommendedOffsets(rows);
+    comments.push(`🔧 추천 보정: Q ${mmText(rec.q)}, 좌우 ${mmText(rec.leftRightOffset)}, 상하 ${mmText(rec.upDownOffset)} → 보정값 계산기에서 현재 설비값과 합산하세요.`);
+  }
+
+  const lowMarginRows = rows.filter((row) => Math.min(marginRate(row.leftRight), marginRate(row.upDown)) < 20);
+  if (lowMarginRows.length > 0) {
+    comments.push(`⚠️ 마진 20% 미만 Row: ${lowMarginRows.map((row) => row.row).join(', ')}. 추가 보정 없으면 NG 전환 위험.`);
+  }
+
   return comments;
 }
-
-const calcRecommendedOffsets = (rows: RowDeviation[]): SimulationOffsets => {
-  const avgLeftRight = rows.reduce((acc, row) => acc + row.leftRight, 0) / rows.length;
-  const avgUpDown = rows.reduce((acc, row) => acc + row.upDown, 0) / rows.length;
-
-  const center = (rows.length + 1) / 2;
-  const slopeNumerator = rows.reduce((acc, row) => acc + (row.row - center) * row.leftRight, 0);
-  const slopeDenominator = rows.reduce((acc, row) => acc + (row.row - center) ** 2, 0);
-  const slope = slopeDenominator === 0 ? 0 : slopeNumerator / slopeDenominator;
-
-  return {
-    q: Number((-slope * 0.9).toFixed(3)),
-    leftRightOffset: Number((-avgLeftRight).toFixed(3)),
-    upDownOffset: Number((-avgUpDown).toFixed(3)),
-  };
-};
 
 const simulateRow = (row: RowDeviation, offsets: SimulationOffsets, rowCount: number): RowDeviation => {
   const center = (rowCount + 1) / 2;
@@ -225,19 +249,23 @@ function BiasCompass({ leftRight: leftRightValue, upDown: upDownValue }: { leftR
 }
 
 export default function BottomPrintingTab() {
-  const recommended = useMemo(() => calcRecommendedOffsets(rowData), []);
+  const lineData = useMemo<Record<LineKey, RowDeviation[]>>(() => ({ A라인: rowData, B라인: [] }), []);
+  const [selectedLine, setSelectedLine] = useState<LineKey>('A라인');
+  const currentRows = lineData[selectedLine];
+  const hasLineData = currentRows.length > 0;
 
-  const [offsets, setOffsets] = useState<SimulationOffsets>(recommended);
+  const recommended = useMemo(() => calcRecommendedOffsets(currentRows), [currentRows]);
+  const [secondaryOffsets, setSecondaryOffsets] = useState<SimulationOffsets>(recommended);
+  const [equipmentOffsets, setEquipmentOffsets] = useState<SimulationOffsets>({ q: 0, leftRightOffset: 0, upDownOffset: 0 });
+  const [copied, setCopied] = useState(false);
 
-  const simulatedRows = useMemo(
-    () => rowData.map((row) => simulateRow(row, offsets, rowData.length)),
-    [offsets],
-  );
+  const simulatedRows = useMemo(() => currentRows.map((row) => simulateRow(row, secondaryOffsets, currentRows.length)), [currentRows, secondaryOffsets]);
+  const actualAfterRows = useMemo(() => currentRows.map((row) => simulateRow(row, recommended, currentRows.length)), [currentRows, recommended]);
 
-  const rowSummaries = useMemo(() => rowData.map((row) => toRowSummary(row)), []);
+  const rowSummaries = useMemo(() => currentRows.map((row) => toRowSummary(row)), [currentRows]);
   const comments = useMemo(() => buildComments(rowSummaries), [rowSummaries]);
   const worstRow = useMemo(
-    () => rowSummaries.reduce((a, b) => (Math.abs(b.worst) > Math.abs(a.worst) ? b : a)),
+    () => (rowSummaries.length > 0 ? rowSummaries.reduce((a, b) => (Math.abs(b.worst) > Math.abs(a.worst) ? b : a), rowSummaries[0]) : undefined),
     [rowSummaries],
   );
 
@@ -252,13 +280,24 @@ export default function BottomPrintingTab() {
   }, [rowSummaries]);
 
   const summary = useMemo(() => {
-    const beforeWorst = Math.max(...rowData.map((row) => Math.max(Math.abs(row.leftRight), Math.abs(row.upDown))));
+    if (!hasLineData) return { beforeWorst: 0, afterWorst: 0, beforeNgCount: 0, afterNgCount: 0 };
+
+    const beforeWorst = Math.max(...currentRows.map((row) => Math.max(Math.abs(row.leftRight), Math.abs(row.upDown))));
     const afterWorst = Math.max(...simulatedRows.map((row) => Math.max(Math.abs(row.leftRight), Math.abs(row.upDown))));
     const beforeNgCount = rowSummaries.filter((row) => row.status === 'NG').length;
     const afterNgCount = simulatedRows.filter((row) => getStatus(Math.max(Math.abs(row.leftRight), Math.abs(row.upDown))) === 'NG').length;
 
     return { beforeWorst, afterWorst, beforeNgCount, afterNgCount };
-  }, [rowSummaries, simulatedRows]);
+  }, [currentRows, hasLineData, rowSummaries, simulatedRows]);
+
+  const finalOffsets = useMemo(
+    () => ({
+      q: Number((equipmentOffsets.q + secondaryOffsets.q).toFixed(3)),
+      leftRightOffset: Number((equipmentOffsets.leftRightOffset + secondaryOffsets.leftRightOffset).toFixed(3)),
+      upDownOffset: Number((equipmentOffsets.upDownOffset + secondaryOffsets.upDownOffset).toFixed(3)),
+    }),
+    [equipmentOffsets, secondaryOffsets],
+  );
 
   const sheetInfo = {
     sheetId: 'BP-2026-0213-A01',
@@ -266,168 +305,294 @@ export default function BottomPrintingTab() {
     fileName: 'bottom_printing_sample_0213.csv',
   };
 
+  const applyRecommendedToSecondary = () => setSecondaryOffsets(recommended);
+
+  const copyFinalOffsets = async () => {
+    const text = `Q=${plainMmText(finalOffsets.q)}, 좌우=${plainMmText(finalOffsets.leftRightOffset)}, 상하=${plainMmText(finalOffsets.upDownOffset)}`;
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  const renderOffsetControl = (label: string, value: number, onChange: (next: number) => void) => (
+    <label style={{ color: palette.textDim }}>
+      <div style={{ marginBottom: 6 }}>
+        {label}: <b>{mmText(value)}</b>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input type="number" step={0.001} value={value} onChange={(event) => onChange(Number(event.target.value))} style={{ width: 90, textAlign: 'right' }} />
+        <input type="range" min={-0.2} max={0.2} step={0.001} value={value} onChange={(event) => onChange(Number(event.target.value))} style={{ flex: 1 }} />
+      </div>
+    </label>
+  );
+
   return (
     <div style={{ padding: 24, display: 'grid', gap: 20, fontFamily: 'sans-serif', background: palette.bg, color: palette.text, minHeight: '100%' }}>
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(180px, 1fr))', gap: 12 }}>
-        <article style={{ background: palette.ok, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}` }}>
-          <h3 style={{ margin: 0, fontSize: 14 }}>OK</h3>
-          <div style={{ fontSize: 32, fontWeight: 700 }}>{statusCounts.OK}</div>
-        </article>
-        <article style={{ background: palette.check, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}`, color: '#111827' }}>
-          <h3 style={{ margin: 0, fontSize: 14 }}>CHECK</h3>
-          <div style={{ fontSize: 32, fontWeight: 700 }}>{statusCounts.CHECK}</div>
-        </article>
-        <article style={{ background: palette.ng, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}` }}>
-          <h3 style={{ margin: 0, fontSize: 14 }}>NG</h3>
-          <div style={{ fontSize: 32, fontWeight: 700 }}>{statusCounts.NG}</div>
-        </article>
-        <article style={{ background: palette.card, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}` }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: 14, color: palette.green }}>시트 정보</h3>
-          <div style={{ fontSize: 13, color: palette.textDim, lineHeight: 1.6 }}>
-            <div>시트ID: {sheetInfo.sheetId}</div>
-            <div>수집시각: {sheetInfo.collectedAt}</div>
-            <div>파일명: {sheetInfo.fileName}</div>
-          </div>
-        </article>
-      </section>
-
-      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
-        <h2 style={{ margin: '0 0 8px', color: palette.text }}>보정 추천 요약</h2>
-        <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7, color: palette.textDim }}>
-          <li>자동 추천: 회전(Q) {mmText(recommended.q)}, 좌우 {mmText(recommended.leftRightOffset)}, 상하 {mmText(recommended.upDownOffset)}</li>
-          <li>보정 방향 원칙: 편차가 +이면 반대(-) 방향, 편차가 -이면 반대(+) 방향으로 입력</li>
-          <li>현재 시뮬레이션 기준 NG Row {summary.beforeNgCount}개 → {summary.afterNgCount}개</li>
-        </ul>
-      </section>
-
-      <section style={{ background: palette.card, borderRadius: 12, border: `1px solid ${palette.border}`, padding: 16, borderLeft: `4px solid ${palette.accent}` }}>
-        <h2 style={{ marginTop: 0, marginBottom: 10, color: palette.text }}>🤖 AI 분석 코멘트</h2>
-        <ul style={{ margin: 0, paddingLeft: 20, color: palette.textDim, lineHeight: 1.8 }}>
-          {comments.map((comment) => (
-            <li key={comment}>{comment}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
-        <h2 style={{ marginTop: 0, color: palette.text }}>치우침 도형 (최대 편차 Row)</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <BiasCompass leftRight={worstRow.leftRight} upDown={worstRow.upDown} />
-          <div style={{ color: palette.textDim, lineHeight: 1.7 }}>
-            <div>대상 Row: {worstRow.row}</div>
-            <div>최대 축: {worstRow.worstAxis}</div>
-            <div>편차: {mmText(worstRow.worst)}</div>
-          </div>
-        </div>
-      </section>
-
-      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
-        <h2 style={{ marginTop: 0, color: palette.text }}>실시간 보정 시뮬레이션</h2>
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(3, minmax(220px, 1fr))' }}>
-          <label style={{ color: palette.textDim }}>
-            회전(Q): <b>{mmText(offsets.q)}</b>
-            <input type="range" min={-0.2} max={0.2} step={0.001} value={offsets.q} onChange={(event) => setOffsets((prev) => ({ ...prev, q: Number(event.target.value) }))} style={{ width: '100%' }} />
-          </label>
-          <label style={{ color: palette.textDim }}>
-            좌우 오프셋: <b>{mmText(offsets.leftRightOffset)}</b>
-            <input type="range" min={-0.2} max={0.2} step={0.001} value={offsets.leftRightOffset} onChange={(event) => setOffsets((prev) => ({ ...prev, leftRightOffset: Number(event.target.value) }))} style={{ width: '100%' }} />
-          </label>
-          <label style={{ color: palette.textDim }}>
-            상하 오프셋: <b>{mmText(offsets.upDownOffset)}</b>
-            <input type="range" min={-0.2} max={0.2} step={0.001} value={offsets.upDownOffset} onChange={(event) => setOffsets((prev) => ({ ...prev, upDownOffset: Number(event.target.value) }))} style={{ width: '100%' }} />
-          </label>
-        </div>
-      </section>
-
-      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
-        <h2 style={{ marginTop: 0, color: palette.text }}>Row별 편차와 즉시 조치</h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', color: palette.text }}>
-          <thead>
-            <tr style={{ background: palette.accent, color: '#fff' }}>
-              <th>Row</th>
-              <th>←좌/우→</th>
-              <th>인라인바(좌우)</th>
-              <th>↑상/하↓</th>
-              <th>인라인바(상하)</th>
-              <th>방향</th>
-              <th>보정 권장</th>
-              <th>판정</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rowData.map((beforeRow) => {
-              const beforeWorst = Math.max(Math.abs(beforeRow.leftRight), Math.abs(beforeRow.upDown));
-              const status = getStatus(beforeWorst);
-
-              return (
-                <tr key={beforeRow.row} style={{ borderTop: `1px solid ${palette.border}`, background: beforeRow.row % 2 === 0 ? palette.bg : palette.card }}>
-                  <td>{beforeRow.row}</td>
-                  <td>{mmText(beforeRow.leftRight)}</td>
-                  <td>
-                    <InlineDeviationBar value={beforeRow.leftRight} />
-                  </td>
-                  <td>{mmText(beforeRow.upDown)}</td>
-                  <td>
-                    <InlineDeviationBar value={beforeRow.upDown} />
-                  </td>
-                  <td style={{ lineHeight: 1.7 }}>
-                    <div>{axisDirectionText(beforeRow.leftRight, '좌우')}</div>
-                    <div>{axisDirectionText(beforeRow.upDown, '상하')}</div>
-                  </td>
-                  <td style={{ lineHeight: 1.6 }}>
-                    <div>좌우: {correctionText(-beforeRow.leftRight, '좌우')}</div>
-                    <div>상하: {correctionText(-beforeRow.upDown, '상하')}</div>
-                  </td>
-                  <td>
-                    <span style={{ color: '#fff', fontWeight: 700, background: getColor(status), borderRadius: 999, padding: '4px 10px', fontSize: 12 }}>{status}</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
-
-      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
-        <h2 style={{ marginTop: 0, color: palette.text }}>Before / After 비교</h2>
-        <div style={{ width: '100%', height: 360 }}>
-          <ResponsiveContainer>
-            <BarChart
-              data={rowData.map((row, index) => ({
-                row: row.row,
-                beforeWorst: Number(Math.max(Math.abs(row.leftRight), Math.abs(row.upDown)).toFixed(4)),
-                afterWorst: Number(Math.max(Math.abs(simulatedRows[index].leftRight), Math.abs(simulatedRows[index].upDown)).toFixed(4)),
-              }))}
-              margin={{ top: 20, right: 24, left: 12, bottom: 12 }}
+      <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ margin: 0 }}>라인 선택</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {(['A라인', 'B라인'] as LineKey[]).map((line) => (
+            <button
+              key={line}
+              type="button"
+              onClick={() => {
+                setSelectedLine(line);
+                const nextRows = lineData[line];
+                setSecondaryOffsets(calcRecommendedOffsets(nextRows));
+              }}
+              style={{
+                border: `1px solid ${selectedLine === line ? palette.green : palette.border}`,
+                background: selectedLine === line ? '#1f3b1d' : palette.bg,
+                color: palette.text,
+                borderRadius: 8,
+                padding: '8px 12px',
+                fontWeight: 700,
+              }}
             >
-              <CartesianGrid stroke={palette.border} strokeDasharray="3 3" />
-              <XAxis dataKey="row" tick={{ fill: palette.textDim }} axisLine={{ stroke: palette.border }} tickLine={{ stroke: palette.border }} />
-              <YAxis domain={[0, 0.2]} tickFormatter={(value) => `${value.toFixed(2)}mm`} tick={{ fill: palette.textDim }} axisLine={{ stroke: palette.border }} tickLine={{ stroke: palette.border }} />
-              <Tooltip
-                contentStyle={{ background: palette.card, border: `1px solid ${palette.border}`, color: palette.text }}
-                formatter={(value: number) => `${value.toFixed(3)} mm`}
-              />
-              <Legend />
-              <ReferenceLine y={CHECK_LIMIT} stroke={CHECK} strokeDasharray="5 5" label="CHECK 0.12" />
-              <ReferenceLine y={NG_LIMIT} stroke={NG} strokeDasharray="5 5" label="NG 0.15" />
-              <Bar dataKey="beforeWorst" name="Before 최대 편차" fill="#9ca3af">
-                {rowData.map((_, index) => (
-                  <Cell key={`before-${index + 1}`} fill="#9ca3af" />
-                ))}
-              </Bar>
-              <Bar dataKey="afterWorst" name="After 최대 편차">
-                {simulatedRows.map((row) => {
-                  const worst = Math.max(Math.abs(row.leftRight), Math.abs(row.upDown));
-                  return <Cell key={`after-${row.row}`} fill={getColor(getStatus(worst))} />;
-                })}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+              {line}
+            </button>
+          ))}
         </div>
-        <p style={{ marginBottom: 0, color: palette.textDim }}>
-          최대 편차(절댓값): Before {summary.beforeWorst.toFixed(3)}mm → After {summary.afterWorst.toFixed(3)}mm
-        </p>
       </section>
+
+      {!hasLineData ? (
+        <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 20, background: palette.card, color: palette.textDim }}>
+          <h2 style={{ marginTop: 0, color: palette.text }}>B라인 데이터 없음</h2>
+          <p style={{ margin: 0 }}>현재는 샘플 데이터로 A라인만 제공됩니다. B라인은 측정 데이터 업로드 후 표시됩니다.</p>
+        </section>
+      ) : (
+        <>
+          <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(180px, 1fr))', gap: 12 }}>
+            <article style={{ background: palette.ok, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}` }}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>OK</h3>
+              <div style={{ fontSize: 32, fontWeight: 700 }}>{statusCounts.OK}</div>
+            </article>
+            <article style={{ background: palette.check, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}`, color: '#111827' }}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>CHECK</h3>
+              <div style={{ fontSize: 32, fontWeight: 700 }}>{statusCounts.CHECK}</div>
+            </article>
+            <article style={{ background: palette.ng, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}` }}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>NG</h3>
+              <div style={{ fontSize: 32, fontWeight: 700 }}>{statusCounts.NG}</div>
+            </article>
+            <article style={{ background: palette.card, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}` }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: 14, color: palette.green }}>시트 정보</h3>
+              <div style={{ fontSize: 13, color: palette.textDim, lineHeight: 1.6 }}>
+                <div>시트ID: {sheetInfo.sheetId}</div>
+                <div>수집시각: {sheetInfo.collectedAt}</div>
+                <div>파일명: {sheetInfo.fileName}</div>
+              </div>
+            </article>
+          </section>
+
+          <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
+            <h2 style={{ marginTop: 0, color: palette.text }}>보정 추천 요약</h2>
+            <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7, color: palette.textDim }}>
+              <li>자동 추천: 회전(Q) {mmText(recommended.q)}, 좌우 {mmText(recommended.leftRightOffset)}, 상하 {mmText(recommended.upDownOffset)}</li>
+              <li>보정 방향 원칙: 편차가 +이면 반대(-) 방향, 편차가 -이면 반대(+) 방향으로 입력</li>
+              <li>현재 시뮬레이션 기준 NG Row {summary.beforeNgCount}개 → {summary.afterNgCount}개</li>
+            </ul>
+          </section>
+
+          <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
+            <h2 style={{ marginTop: 0 }}>🔧 보정값 계산기</h2>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${palette.border}` }}>
+                  <th style={{ textAlign: 'left', paddingBottom: 8 }}>항목</th>
+                  <th>Q(회전)</th>
+                  <th>←좌/우→</th>
+                  <th>↑상/하↓</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'left', padding: '10px 0' }}>① 현재 설비값</td>
+                  <td><input type="number" step="0.001" value={equipmentOffsets.q} onChange={(e) => setEquipmentOffsets((prev) => ({ ...prev, q: Number(e.target.value) }))} /></td>
+                  <td><input type="number" step="0.001" value={equipmentOffsets.leftRightOffset} onChange={(e) => setEquipmentOffsets((prev) => ({ ...prev, leftRightOffset: Number(e.target.value) }))} /></td>
+                  <td><input type="number" step="0.001" value={equipmentOffsets.upDownOffset} onChange={(e) => setEquipmentOffsets((prev) => ({ ...prev, upDownOffset: Number(e.target.value) }))} /></td>
+                </tr>
+                <tr>
+                  <td style={{ textAlign: 'left', padding: '10px 0' }}>② AI 추천 보정</td>
+                  <td><input type="number" step="0.001" value={secondaryOffsets.q} onChange={(e) => setSecondaryOffsets((prev) => ({ ...prev, q: Number(e.target.value) }))} /></td>
+                  <td><input type="number" step="0.001" value={secondaryOffsets.leftRightOffset} onChange={(e) => setSecondaryOffsets((prev) => ({ ...prev, leftRightOffset: Number(e.target.value) }))} /></td>
+                  <td><input type="number" step="0.001" value={secondaryOffsets.upDownOffset} onChange={(e) => setSecondaryOffsets((prev) => ({ ...prev, upDownOffset: Number(e.target.value) }))} /></td>
+                </tr>
+                <tr style={{ borderTop: `1px solid ${palette.border}` }}>
+                  <td style={{ textAlign: 'left', paddingTop: 10 }}>③ 최종 입력값</td>
+                  <td style={{ color: palette.green, fontWeight: 800 }}>{plainMmText(finalOffsets.q)}</td>
+                  <td style={{ color: palette.green, fontWeight: 800 }}>{plainMmText(finalOffsets.leftRightOffset)}</td>
+                  <td style={{ color: palette.green, fontWeight: 800 }}>{plainMmText(finalOffsets.upDownOffset)}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
+              <button type="button" onClick={copyFinalOffsets} style={{ padding: '8px 12px', borderRadius: 8 }}>{copied ? '✅ 복사됨' : '📋 최종값 복사'}</button>
+              <button type="button" onClick={applyRecommendedToSecondary} style={{ padding: '8px 12px', borderRadius: 8 }}>🔄 추천값으로 리셋</button>
+            </div>
+          </section>
+
+          <section style={{ background: palette.card, borderRadius: 12, border: `1px solid ${palette.border}`, padding: 16, borderLeft: `4px solid ${palette.accent}` }}>
+            <h2 style={{ marginTop: 0, marginBottom: 10, color: palette.text }}>🤖 AI 분석 코멘트</h2>
+            <ul style={{ margin: 0, paddingLeft: 20, color: palette.textDim, lineHeight: 1.8 }}>
+              {comments.map((comment) => (
+                <li key={comment}>{comment}</li>
+              ))}
+            </ul>
+          </section>
+
+          {worstRow && (
+            <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
+              <h2 style={{ marginTop: 0, color: palette.text }}>치우침 도형 (최대 편차 Row)</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <BiasCompass leftRight={worstRow.leftRight} upDown={worstRow.upDown} />
+                <div style={{ color: palette.textDim, lineHeight: 1.7 }}>
+                  <div>대상 Row: {worstRow.row}</div>
+                  <div>최대 축: {worstRow.worstAxis}</div>
+                  <div>편차: {mmText(worstRow.worst)}</div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
+            <h2 style={{ marginTop: 0, color: palette.text }}>실시간 보정 시뮬레이션</h2>
+            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(3, minmax(220px, 1fr))' }}>
+              {renderOffsetControl('회전(Q)', secondaryOffsets.q, (next) => setSecondaryOffsets((prev) => ({ ...prev, q: next })))}
+              {renderOffsetControl('좌우 오프셋', secondaryOffsets.leftRightOffset, (next) => setSecondaryOffsets((prev) => ({ ...prev, leftRightOffset: next })))}
+              {renderOffsetControl('상하 오프셋', secondaryOffsets.upDownOffset, (next) => setSecondaryOffsets((prev) => ({ ...prev, upDownOffset: next })))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={applyRecommendedToSecondary}>AI 추천값 적용</button>
+              <button type="button" onClick={() => setSecondaryOffsets((prev) => ({ ...prev }))}>보정 계산기 값 적용</button>
+              <button type="button" onClick={() => setSecondaryOffsets({ q: 0, leftRightOffset: 0, upDownOffset: 0 })}>초기화 (0)</button>
+            </div>
+          </section>
+
+          <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
+            <h2 style={{ marginTop: 0, color: palette.text }}>Row별 편차와 즉시 조치</h2>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', color: palette.text }}>
+              <thead>
+                <tr style={{ background: palette.accent, color: '#fff' }}>
+                  <th>Row</th>
+                  <th>←좌/우→</th>
+                  <th>인라인바(좌우)</th>
+                  <th>↑상/하↓</th>
+                  <th>인라인바(상하)</th>
+                  <th>마진</th>
+                  <th>방향</th>
+                  <th>보정 권장</th>
+                  <th>판정</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentRows.map((beforeRow) => {
+                  const beforeWorst = Math.max(Math.abs(beforeRow.leftRight), Math.abs(beforeRow.upDown));
+                  const status = getStatus(beforeWorst);
+                  const minMargin = Math.min(marginRate(beforeRow.leftRight), marginRate(beforeRow.upDown));
+
+                  return (
+                    <tr key={beforeRow.row} style={{ borderTop: `1px solid ${palette.border}`, background: beforeRow.row % 2 === 0 ? palette.bg : palette.card }}>
+                      <td>{beforeRow.row}</td>
+                      <td>{mmText(beforeRow.leftRight)}</td>
+                      <td>
+                        <InlineDeviationBar value={beforeRow.leftRight} />
+                      </td>
+                      <td>{mmText(beforeRow.upDown)}</td>
+                      <td>
+                        <InlineDeviationBar value={beforeRow.upDown} />
+                      </td>
+                      <td style={{ color: getMarginColor(minMargin), fontWeight: 700 }}>{Math.max(0, Math.round(minMargin))}%</td>
+                      <td style={{ lineHeight: 1.7 }}>
+                        <div>{axisDirectionText(beforeRow.leftRight, '좌우')}</div>
+                        <div>{axisDirectionText(beforeRow.upDown, '상하')}</div>
+                      </td>
+                      <td style={{ lineHeight: 1.6 }}>
+                        <div>좌우: {correctionText(-beforeRow.leftRight, '좌우')}</div>
+                        <div>상하: {correctionText(-beforeRow.upDown, '상하')}</div>
+                      </td>
+                      <td>
+                        <span style={{ color: '#fff', fontWeight: 700, background: getColor(status), borderRadius: 999, padding: '4px 10px', fontSize: 12 }}>{status}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+
+          <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
+            <h2 style={{ marginTop: 0 }}>보정 후 재검사 결과 (실제 Before/After 샘플)</h2>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
+              <thead>
+                <tr style={{ background: palette.accent, color: '#fff' }}>
+                  <th>Row</th>
+                  <th>Before 최대편차</th>
+                  <th>After 최대편차</th>
+                  <th>개선량</th>
+                  <th>판정 변화</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentRows.map((row, index) => {
+                  const before = Math.max(Math.abs(row.leftRight), Math.abs(row.upDown));
+                  const after = Math.max(Math.abs(actualAfterRows[index].leftRight), Math.abs(actualAfterRows[index].upDown));
+                  return (
+                    <tr key={`actual-${row.row}`} style={{ borderTop: `1px solid ${palette.border}` }}>
+                      <td>{row.row}</td>
+                      <td>{before.toFixed(3)} mm</td>
+                      <td>{after.toFixed(3)} mm</td>
+                      <td style={{ color: after <= before ? palette.green : palette.ng, fontWeight: 700 }}>{(before - after).toFixed(3)} mm</td>
+                      <td>{getStatus(before)} → {getStatus(after)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+
+          <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
+            <h2 style={{ marginTop: 0, color: palette.text }}>Before / After 비교</h2>
+            <div style={{ width: '100%', height: 360 }}>
+              <ResponsiveContainer>
+                <BarChart
+                  data={currentRows.map((row, index) => ({
+                    row: row.row,
+                    beforeWorst: Number(Math.max(Math.abs(row.leftRight), Math.abs(row.upDown)).toFixed(4)),
+                    afterWorst: Number(Math.max(Math.abs(simulatedRows[index].leftRight), Math.abs(simulatedRows[index].upDown)).toFixed(4)),
+                  }))}
+                  margin={{ top: 20, right: 24, left: 12, bottom: 12 }}
+                >
+                  <CartesianGrid stroke={palette.border} strokeDasharray="3 3" />
+                  <XAxis dataKey="row" tick={{ fill: palette.textDim }} axisLine={{ stroke: palette.border }} tickLine={{ stroke: palette.border }} />
+                  <YAxis domain={[0, 0.2]} tickFormatter={(value) => `${value.toFixed(2)}mm`} tick={{ fill: palette.textDim }} axisLine={{ stroke: palette.border }} tickLine={{ stroke: palette.border }} />
+                  <Tooltip
+                    contentStyle={{ background: palette.card, border: `1px solid ${palette.border}`, color: palette.text }}
+                    formatter={(value: number) => `${value.toFixed(3)} mm`}
+                  />
+                  <Legend />
+                  <ReferenceLine y={CHECK_LIMIT} stroke={CHECK} strokeDasharray="5 5" label="CHECK 0.12" />
+                  <ReferenceLine y={NG_LIMIT} stroke={NG} strokeDasharray="5 5" label="NG 0.15" />
+                  <Bar dataKey="beforeWorst" name="Before 최대 편차" fill="#9ca3af">
+                    {currentRows.map((_, index) => (
+                      <Cell key={`before-${index + 1}`} fill="#9ca3af" />
+                    ))}
+                  </Bar>
+                  <Bar dataKey="afterWorst" name="After 최대 편차">
+                    {simulatedRows.map((row) => {
+                      const worst = Math.max(Math.abs(row.leftRight), Math.abs(row.upDown));
+                      return <Cell key={`after-${row.row}`} fill={getColor(getStatus(worst))} />;
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <p style={{ marginBottom: 0, color: palette.textDim }}>
+              최대 편차(절댓값): Before {summary.beforeWorst.toFixed(3)}mm → After {summary.afterWorst.toFixed(3)}mm
+            </p>
+          </section>
+        </>
+      )}
     </div>
   );
 }
