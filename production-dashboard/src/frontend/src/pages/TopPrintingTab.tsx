@@ -32,7 +32,6 @@ import {
   toRowSummary,
 } from '../utils/printingCommon';
 
-type LineKey = 'A라인' | 'B라인';
 type TrayKey = '트레이1' | '트레이2' | '전체';
 
 const marginColor = (margin: number) => {
@@ -41,8 +40,7 @@ const marginColor = (margin: number) => {
   return palette.ng;
 };
 
-const lineTrayRows: Record<LineKey, Record<'트레이1' | '트레이2', RowDeviation[]>> = {
-  A라인: {
+const trayRows: Record<'트레이1' | '트레이2', RowDeviation[]> = {
     트레이1: [
       { row: 1, leftRight: -0.008, upDown: -0.022 },
       { row: 2, leftRight: -0.031, upDown: -0.038 },
@@ -71,38 +69,49 @@ const lineTrayRows: Record<LineKey, Record<'트레이1' | '트레이2', RowDevia
       { row: 11, leftRight: 0.138, upDown: 0.132 },
       { row: 12, leftRight: -0.133, upDown: -0.127 },
     ],
-  },
-  B라인: { 트레이1: [], 트레이2: [] },
 };
 
+const zeroOffsets: SimulationOffsets = { q: 0, leftRightOffset: 0, upDownOffset: 0 };
+
 export default function TopPrintingTab() {
-  const [selectedLine, setSelectedLine] = useState<LineKey>('A라인');
   const [selectedTray, setSelectedTray] = useState<TrayKey>('전체');
   const rows = useMemo(() => {
-    const trays = lineTrayRows[selectedLine];
-    if (!trays) return [];
-    if (selectedTray === '트레이1') return trays.트레이1;
-    if (selectedTray === '트레이2') return trays.트레이2;
-    return trays.트레이1.map((row, idx) => ({
+    if (selectedTray === '트레이1') return trayRows.트레이1;
+    if (selectedTray === '트레이2') return trayRows.트레이2;
+    return trayRows.트레이1.map((row, idx) => ({
       row: row.row,
-      leftRight: Number(((row.leftRight + (trays.트레이2[idx]?.leftRight ?? 0)) / 2).toFixed(4)),
-      upDown: Number(((row.upDown + (trays.트레이2[idx]?.upDown ?? 0)) / 2).toFixed(4)),
+      leftRight: Number(((row.leftRight + (trayRows.트레이2[idx]?.leftRight ?? 0)) / 2).toFixed(4)),
+      upDown: Number(((row.upDown + (trayRows.트레이2[idx]?.upDown ?? 0)) / 2).toFixed(4)),
     }));
-  }, [selectedLine, selectedTray]);
+  }, [selectedTray]);
   const hasData = rows.length > 0;
 
   const recommended = useMemo(() => calcRecommendedOffsets(rows), [rows]);
-  const [equipmentOffsets, setEquipmentOffsets] = useState<SimulationOffsets>({ q: 0, leftRightOffset: 0, upDownOffset: 0 });
-  const [secondaryOffsets, setSecondaryOffsets] = useState<SimulationOffsets>(recommended);
-  const [offsets, setOffsets] = useState<SimulationOffsets>(recommended);
   const [copied, setCopied] = useState(false);
+  const [trayInputs, setTrayInputs] = useState<Record<TrayKey, { equipmentOffsets: SimulationOffsets; secondaryOffsets: SimulationOffsets; offsets: SimulationOffsets }>>({
+    트레이1: { equipmentOffsets: zeroOffsets, secondaryOffsets: calcRecommendedOffsets(trayRows.트레이1), offsets: calcRecommendedOffsets(trayRows.트레이1) },
+    트레이2: { equipmentOffsets: zeroOffsets, secondaryOffsets: calcRecommendedOffsets(trayRows.트레이2), offsets: calcRecommendedOffsets(trayRows.트레이2) },
+    전체: { equipmentOffsets: zeroOffsets, secondaryOffsets: calcRecommendedOffsets(rows), offsets: calcRecommendedOffsets(rows) },
+  });
 
   useEffect(() => {
-    setSecondaryOffsets(recommended);
-    setOffsets(recommended);
-    setEquipmentOffsets({ q: 0, leftRightOffset: 0, upDownOffset: 0 });
     setCopied(false);
-  }, [recommended]);
+  }, [selectedTray]);
+
+  const activeInputs = trayInputs[selectedTray];
+  const equipmentOffsets = activeInputs.equipmentOffsets;
+  const secondaryOffsets = activeInputs.secondaryOffsets;
+  const offsets = activeInputs.offsets;
+
+  const updateTrayInputs = (patch: Partial<{ equipmentOffsets: SimulationOffsets; secondaryOffsets: SimulationOffsets; offsets: SimulationOffsets }>) => {
+    setTrayInputs((prev) => ({
+      ...prev,
+      [selectedTray]: {
+        ...prev[selectedTray],
+        ...patch,
+      },
+    }));
+  };
 
   const finalOffsets = useMemo(
     () => ({
@@ -122,8 +131,8 @@ export default function TopPrintingTab() {
   const comments = useMemo(() => {
     const base = buildComments(rowSummaries);
     if (selectedTray === '전체') {
-      const tray1 = lineTrayRows[selectedLine]?.트레이1 ?? [];
-      const tray2 = lineTrayRows[selectedLine]?.트레이2 ?? [];
+      const tray1 = trayRows.트레이1;
+      const tray2 = trayRows.트레이2;
       if (tray1.length > 0 && tray2.length > 0) {
         const avgTray1 = tray1.reduce((acc, row) => acc + Math.max(Math.abs(row.leftRight), Math.abs(row.upDown)), 0) / tray1.length;
         const avgTray2 = tray2.reduce((acc, row) => acc + Math.max(Math.abs(row.leftRight), Math.abs(row.upDown)), 0) / tray2.length;
@@ -133,7 +142,7 @@ export default function TopPrintingTab() {
       }
     }
     return base;
-  }, [rowSummaries, selectedLine, selectedTray]);
+  }, [rowSummaries, selectedTray]);
   const worstRow = useMemo(
     () => rowSummaries.reduce((a, b) => (Math.abs(b.worst) > Math.abs(a.worst) ? b : a), rowSummaries[0]),
     [rowSummaries],
@@ -166,9 +175,9 @@ export default function TopPrintingTab() {
   };
 
   const sheetInfo = {
-    sheetId: `TP-2026-0213-${selectedLine === 'A라인' ? 'A01' : 'B01'}-${selectedTray}`,
-    collectedAt: selectedLine === 'A라인' ? '2026-02-13 10:05' : '-',
-    fileName: selectedLine === 'A라인' ? 'printing-A-top-sample_0213.csv' : '-',
+    sheetId: `TP-2026-0213-L1-${selectedTray}`,
+    collectedAt: '2026-02-13 10:05',
+    fileName: 'top_printing_sample_0213.csv',
   };
 
   return (
@@ -176,16 +185,6 @@ export default function TopPrintingTab() {
       <section style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0, fontSize: 24 }}>상판 프린팅</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label htmlFor="top-line-select" style={{ color: palette.textDim }}>라인 선택</label>
-          <select
-            id="top-line-select"
-            value={selectedLine}
-            onChange={(event) => setSelectedLine(event.target.value as LineKey)}
-            style={{ background: palette.card, color: palette.text, border: `1px solid ${palette.border}`, borderRadius: 8, padding: '8px 10px' }}
-          >
-            <option value="A라인">A라인</option>
-            <option value="B라인">B라인</option>
-          </select>
           <div style={{ display: 'flex', border: `1px solid ${palette.border}`, borderRadius: 8, overflow: 'hidden' }}>
             {(['트레이1', '트레이2', '전체'] as TrayKey[]).map((tray) => (
               <button
@@ -209,8 +208,8 @@ export default function TopPrintingTab() {
 
       {!hasData && (
         <section style={{ border: `1px dashed ${palette.border}`, borderRadius: 12, padding: 24, textAlign: 'center', background: palette.card }}>
-          <h2 style={{ marginTop: 0 }}>선택 조건 데이터 없음</h2>
-          <p style={{ marginBottom: 0, color: palette.textDim }}>현재 샘플 데이터는 A라인 기준으로 트레이1/2만 제공됩니다. 트레이별 보정 추적 구조를 먼저 적용했습니다.</p>
+          <h2 style={{ marginTop: 0 }}>트레이 데이터 없음</h2>
+          <p style={{ marginBottom: 0, color: palette.textDim }}>선택한 트레이에 측정 데이터가 없습니다.</p>
         </section>
       )}
 
@@ -266,7 +265,7 @@ export default function TopPrintingTab() {
                     type="number"
                     step={0.001}
                     value={equipmentOffsets[key]}
-                    onChange={(event) => setEquipmentOffsets((prev) => ({ ...prev, [key]: Number(event.target.value) }))}
+                    onChange={(event) => updateTrayInputs({ equipmentOffsets: { ...equipmentOffsets, [key]: Number(event.target.value) } })}
                     style={{ width: 96, textAlign: 'right', borderRadius: 6, border: `1px solid ${palette.border}`, background: palette.bg, color: palette.text, padding: '6px 8px' }}
                   />
                 </td>
@@ -280,7 +279,7 @@ export default function TopPrintingTab() {
                     type="number"
                     step={0.001}
                     value={secondaryOffsets[key]}
-                    onChange={(event) => setSecondaryOffsets((prev) => ({ ...prev, [key]: Number(event.target.value) }))}
+                    onChange={(event) => updateTrayInputs({ secondaryOffsets: { ...secondaryOffsets, [key]: Number(event.target.value) } })}
                     style={{ width: 96, textAlign: 'right', borderRadius: 6, border: `1px solid ${palette.border}`, background: palette.bg, color: palette.text, padding: '6px 8px' }}
                   />
                 </td>
@@ -304,7 +303,7 @@ export default function TopPrintingTab() {
           </button>
           <button
             type="button"
-            onClick={() => setSecondaryOffsets(recommended)}
+            onClick={() => updateTrayInputs({ secondaryOffsets: recommended, offsets: recommended })}
             style={{ background: palette.card, color: palette.text, border: `1px solid ${palette.border}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}
           >
             🔄 추천값으로 리셋
@@ -352,8 +351,10 @@ export default function TopPrintingTab() {
                   value={offsets[key]}
                   onChange={(event) => {
                     const nextValue = Number(event.target.value);
-                    setOffsets((prev) => ({ ...prev, [key]: nextValue }));
-                    setSecondaryOffsets((prev) => ({ ...prev, [key]: nextValue }));
+                    updateTrayInputs({
+                      offsets: { ...offsets, [key]: nextValue },
+                      secondaryOffsets: { ...secondaryOffsets, [key]: nextValue },
+                    });
                   }}
                   style={{ width: 90, textAlign: 'right', borderRadius: 6, border: `1px solid ${palette.border}`, background: palette.bg, color: palette.text, padding: '6px 8px' }}
                 />
@@ -365,8 +366,10 @@ export default function TopPrintingTab() {
                   value={offsets[key]}
                   onChange={(event) => {
                     const nextValue = Number(event.target.value);
-                    setOffsets((prev) => ({ ...prev, [key]: nextValue }));
-                    setSecondaryOffsets((prev) => ({ ...prev, [key]: nextValue }));
+                    updateTrayInputs({
+                      offsets: { ...offsets, [key]: nextValue },
+                      secondaryOffsets: { ...secondaryOffsets, [key]: nextValue },
+                    });
                   }}
                   style={{ flex: 1 }}
                 />
@@ -378,28 +381,21 @@ export default function TopPrintingTab() {
         <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <button
             type="button"
-            onClick={() => {
-              setOffsets(recommended);
-              setSecondaryOffsets(recommended);
-            }}
+            onClick={() => updateTrayInputs({ offsets: recommended, secondaryOffsets: recommended })}
             style={{ background: palette.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}
           >
             AI 추천값 적용
           </button>
           <button
             type="button"
-            onClick={() => setOffsets({ ...secondaryOffsets })}
+            onClick={() => updateTrayInputs({ offsets: { ...secondaryOffsets } })}
             style={{ background: palette.card, color: palette.text, border: `1px solid ${palette.border}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}
           >
             보정 계산기 값 적용
           </button>
           <button
             type="button"
-            onClick={() => {
-              const zeroOffsets = { q: 0, leftRightOffset: 0, upDownOffset: 0 };
-              setOffsets(zeroOffsets);
-              setSecondaryOffsets(zeroOffsets);
-            }}
+            onClick={() => updateTrayInputs({ offsets: { ...zeroOffsets }, secondaryOffsets: { ...zeroOffsets } })}
             style={{ background: palette.card, color: palette.text, border: `1px solid ${palette.border}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}
           >
             초기화 (0)
