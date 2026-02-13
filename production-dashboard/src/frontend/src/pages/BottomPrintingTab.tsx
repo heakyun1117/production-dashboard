@@ -23,6 +23,7 @@ import {
   RowDeviation,
   axisDirectionText,
   buildComments,
+  extractCorners,
   calcRecommendedOffsets,
   correctionText,
   getColor,
@@ -92,6 +93,9 @@ export default function BottomPrintingTab() {
     () => rows.map((row) => simulateRow(row, offsets, rows.length)),
     [offsets, rows],
   );
+
+  const beforeCorners = useMemo(() => extractCorners(rows), [rows]);
+  const afterCorners = useMemo(() => extractCorners(simulatedRows), [simulatedRows]);
 
   const rowSummaries = useMemo(() => rows.map((row) => toRowSummary(row)), [rows]);
   const comments = useMemo(() => buildComments(rowSummaries), [rowSummaries]);
@@ -409,14 +413,14 @@ export default function BottomPrintingTab() {
           <FourPointVizPanel
             material="카본"
             showAfter={false}
-            before={[{ x: -0.08, y: 0.03 }, { x: 0.07, y: 0.02 }, { x: -0.05, y: -0.06 }, { x: 0.06, y: -0.04 }]}
-            after={[{ x: -0.02, y: 0.01 }, { x: 0.02, y: 0.01 }, { x: -0.01, y: -0.02 }, { x: 0.01, y: -0.02 }]}
+            before={beforeCorners}
+            after={afterCorners}
           />
           <FourPointVizPanel
             material="절연"
             showAfter
-            before={[{ x: -0.06, y: 0.05 }, { x: 0.08, y: 0.04 }, { x: -0.03, y: -0.05 }, { x: 0.05, y: -0.03 }]}
-            after={[{ x: -0.01, y: 0.02 }, { x: 0.02, y: 0.01 }, { x: -0.01, y: -0.02 }, { x: 0.01, y: -0.01 }]}
+            before={beforeCorners}
+            after={afterCorners}
           />
         </div>
         <div style={{ width: '100%', height: 340 }}>

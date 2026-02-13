@@ -258,6 +258,8 @@ const toStats = (rows: RowWithArea[]) => {
 
 const toBarWidth = (value: number, max: number): string => `${Math.max(6, (value / max) * 100)}%`;
 
+const rateText = (value: number): string => `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
+
 const createLineMeasurements = (line: LineKey): ElectrodeMeasurement[] => {
   if (line === 'A') {
     return ELECTRODE_AREA_MEASUREMENTS;
@@ -339,6 +341,12 @@ export default function ElectrodeAreaTab() {
 
   const comments = useMemo(() => {
     const result: string[] = [];
+    const worstNg = rowsWithArea
+      .filter((row) => row.judgment === 'NG')
+      .sort((a, b) => Math.abs(b.areaDeltaRate) - Math.abs(a.areaDeltaRate))[0];
+    if (worstNg) {
+      result.push(`🔴 최우선 NG: 전극 #${worstNg.id} 면적 변화율 ${rateText(worstNg.areaDeltaRate)}. 즉시 점검 필요.`);
+    }
     const row1Avg = zoneSummary.find((zone) => zone.zone === 'Row1')?.avgArea ?? 0;
     const row12Avg = zoneSummary.find((zone) => zone.zone === 'Row12')?.avgArea ?? 0;
     if (Math.abs(row1Avg - row12Avg) > baseline.area * 0.02) {
@@ -470,7 +478,7 @@ export default function ElectrodeAreaTab() {
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span>전극폭 평균 편차</span><DivergingBarCell value={avgDeltas.width} scale={0.03} checkLimit={0.01} ngLimit={0.015} showDirection axis="좌우" /></div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span>전극길이 평균 편차</span><DivergingBarCell value={avgDeltas.length} scale={0.05} checkLimit={0.02} ngLimit={0.03} showDirection axis="상하" /></div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span>면적 증감률(비율)</span><DivergingBarCell value={avgDeltas.areaRate} scale={0.05} checkLimit={0.02} ngLimit={0.03} /></div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span>면적 변화율(%)</span><DivergingBarCell value={avgDeltas.areaRate} scale={0.05} checkLimit={0.02} ngLimit={0.03} formatter={rateText} /></div>
         </div>
       </section>
 
@@ -490,8 +498,8 @@ export default function ElectrodeAreaTab() {
         ))}
       </section>
 
-      <section style={{ ...sectionStyle, overflowX: 'auto' }}>
-        <h3 style={{ marginTop: 0 }}>전극별 편차 테이블 ({filteredRows.length}개)</h3>
+      <section style={{ ...sectionStyle, overflowX: 'auto', maxHeight: 320 }}>
+        <h3 style={{ marginTop: 0 }}>전극별 편차 테이블 ({filteredRows.length}개, 첫 3행 즉시 확인)</h3>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
