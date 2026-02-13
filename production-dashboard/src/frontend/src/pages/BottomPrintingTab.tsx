@@ -266,10 +266,12 @@ export default function BottomPrintingTab() {
 
   const recommended = useMemo(() => calcRecommendedOffsets(rows), [rows]);
   const [equipmentOffsets, setEquipmentOffsets] = useState<SimulationOffsets>({ q: 0, leftRightOffset: 0, upDownOffset: 0 });
+  const [secondaryOffsets, setSecondaryOffsets] = useState<SimulationOffsets>(recommended);
   const [offsets, setOffsets] = useState<SimulationOffsets>(recommended);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    setSecondaryOffsets(recommended);
     setOffsets(recommended);
     setEquipmentOffsets({ q: 0, leftRightOffset: 0, upDownOffset: 0 });
     setCopied(false);
@@ -418,8 +420,8 @@ export default function BottomPrintingTab() {
                   <input
                     type="number"
                     step={0.001}
-                    value={offsets[key]}
-                    onChange={(event) => setOffsets((prev) => ({ ...prev, [key]: Number(event.target.value) }))}
+                    value={secondaryOffsets[key]}
+                    onChange={(event) => setSecondaryOffsets((prev) => ({ ...prev, [key]: Number(event.target.value) }))}
                     style={{ width: 96, textAlign: 'right', borderRadius: 6, border: `1px solid ${palette.border}`, background: palette.bg, color: palette.text, padding: '6px 8px' }}
                   />
                 </td>
@@ -443,7 +445,7 @@ export default function BottomPrintingTab() {
           </button>
           <button
             type="button"
-            onClick={() => setOffsets(recommended)}
+            onClick={() => setSecondaryOffsets(recommended)}
             style={{ background: palette.card, color: palette.text, border: `1px solid ${palette.border}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}
           >
             🔄 추천값으로 리셋
@@ -489,7 +491,11 @@ export default function BottomPrintingTab() {
                   type="number"
                   step={0.001}
                   value={offsets[key]}
-                  onChange={(event) => setOffsets((prev) => ({ ...prev, [key]: Number(event.target.value) }))}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setOffsets((prev) => ({ ...prev, [key]: nextValue }));
+                    setSecondaryOffsets((prev) => ({ ...prev, [key]: nextValue }));
+                  }}
                   style={{ width: 90, textAlign: 'right', borderRadius: 6, border: `1px solid ${palette.border}`, background: palette.bg, color: palette.text, padding: '6px 8px' }}
                 />
                 <input
@@ -498,7 +504,11 @@ export default function BottomPrintingTab() {
                   max={0.2}
                   step={0.001}
                   value={offsets[key]}
-                  onChange={(event) => setOffsets((prev) => ({ ...prev, [key]: Number(event.target.value) }))}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setOffsets((prev) => ({ ...prev, [key]: nextValue }));
+                    setSecondaryOffsets((prev) => ({ ...prev, [key]: nextValue }));
+                  }}
                   style={{ flex: 1 }}
                 />
                 <span style={{ minWidth: 96, textAlign: 'right', color: palette.text }}>{mmText(offsets[key])}</span>
@@ -507,19 +517,30 @@ export default function BottomPrintingTab() {
           ))}
         </div>
         <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <button type="button" onClick={() => setOffsets(recommended)} style={{ background: palette.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setOffsets(recommended);
+              setSecondaryOffsets(recommended);
+            }}
+            style={{ background: palette.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}
+          >
             AI 추천값 적용
           </button>
           <button
             type="button"
-            onClick={() => setOffsets((prev) => ({ ...prev }))}
+            onClick={() => setOffsets({ ...secondaryOffsets })}
             style={{ background: palette.card, color: palette.text, border: `1px solid ${palette.border}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}
           >
             보정 계산기 값 적용
           </button>
           <button
             type="button"
-            onClick={() => setOffsets({ q: 0, leftRightOffset: 0, upDownOffset: 0 })}
+            onClick={() => {
+              const zeroOffsets = { q: 0, leftRightOffset: 0, upDownOffset: 0 };
+              setOffsets(zeroOffsets);
+              setSecondaryOffsets(zeroOffsets);
+            }}
             style={{ background: palette.card, color: palette.text, border: `1px solid ${palette.border}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}
           >
             초기화 (0)
