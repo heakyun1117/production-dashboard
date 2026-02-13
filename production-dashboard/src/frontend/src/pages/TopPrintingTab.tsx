@@ -14,6 +14,7 @@ import {
 
 import {
   BiasCompass,
+  CHECK_LIMIT,
   InlineDeviationBar,
   SimulationOffsets,
   Status,
@@ -32,6 +33,7 @@ import {
 } from '../utils/printingCommon';
 
 type LineKey = 'A라인' | 'B라인';
+type TrayKey = '트레이1' | '트레이2' | '전체';
 
 const marginColor = (margin: number) => {
   if (margin >= 50) return palette.green;
@@ -39,28 +41,54 @@ const marginColor = (margin: number) => {
   return palette.ng;
 };
 
-const lineRows: Record<LineKey, RowDeviation[]> = {
-  A라인: [
-    { row: 1, leftRight: -0.0022, upDown: -0.019 },
-    { row: 2, leftRight: -0.0343, upDown: -0.0425 },
-    { row: 3, leftRight: -0.0271, upDown: -0.0243 },
-    { row: 4, leftRight: -0.0189, upDown: -0.0496 },
-    { row: 5, leftRight: 0.016, upDown: -0.031 },
-    { row: 6, leftRight: 0.023, upDown: 0.018 },
-    { row: 7, leftRight: -0.041, upDown: 0.061 },
-    { row: 8, leftRight: 0.083, upDown: -0.02 },
-    { row: 9, leftRight: 0.097, upDown: 0.114 },
-    { row: 10, leftRight: 0.121, upDown: -0.108 },
-    { row: 11, leftRight: 0.136, upDown: 0.129 },
-    { row: 12, leftRight: -0.154, upDown: -0.142 },
-  ],
-  B라인: [],
+const lineTrayRows: Record<LineKey, Record<'트레이1' | '트레이2', RowDeviation[]>> = {
+  A라인: {
+    트레이1: [
+      { row: 1, leftRight: -0.008, upDown: -0.022 },
+      { row: 2, leftRight: -0.031, upDown: -0.038 },
+      { row: 3, leftRight: -0.024, upDown: -0.028 },
+      { row: 4, leftRight: -0.011, upDown: -0.045 },
+      { row: 5, leftRight: 0.012, upDown: -0.029 },
+      { row: 6, leftRight: 0.021, upDown: 0.014 },
+      { row: 7, leftRight: -0.038, upDown: 0.054 },
+      { row: 8, leftRight: 0.071, upDown: -0.018 },
+      { row: 9, leftRight: 0.089, upDown: 0.104 },
+      { row: 10, leftRight: 0.114, upDown: -0.097 },
+      { row: 11, leftRight: 0.129, upDown: 0.121 },
+      { row: 12, leftRight: -0.141, upDown: -0.136 },
+    ],
+    트레이2: [
+      { row: 1, leftRight: 0.014, upDown: -0.016 },
+      { row: 2, leftRight: -0.016, upDown: -0.033 },
+      { row: 3, leftRight: -0.011, upDown: -0.02 },
+      { row: 4, leftRight: -0.002, upDown: -0.036 },
+      { row: 5, leftRight: 0.026, upDown: -0.023 },
+      { row: 6, leftRight: 0.032, upDown: 0.02 },
+      { row: 7, leftRight: -0.027, upDown: 0.063 },
+      { row: 8, leftRight: 0.092, upDown: -0.011 },
+      { row: 9, leftRight: 0.107, upDown: 0.117 },
+      { row: 10, leftRight: 0.126, upDown: -0.088 },
+      { row: 11, leftRight: 0.138, upDown: 0.132 },
+      { row: 12, leftRight: -0.133, upDown: -0.127 },
+    ],
+  },
+  B라인: { 트레이1: [], 트레이2: [] },
 };
 
-
-export default function BottomPrintingTab() {
+export default function TopPrintingTab() {
   const [selectedLine, setSelectedLine] = useState<LineKey>('A라인');
-  const rows = useMemo(() => lineRows[selectedLine] ?? [], [selectedLine]);
+  const [selectedTray, setSelectedTray] = useState<TrayKey>('전체');
+  const rows = useMemo(() => {
+    const trays = lineTrayRows[selectedLine];
+    if (!trays) return [];
+    if (selectedTray === '트레이1') return trays.트레이1;
+    if (selectedTray === '트레이2') return trays.트레이2;
+    return trays.트레이1.map((row, idx) => ({
+      row: row.row,
+      leftRight: Number(((row.leftRight + (trays.트레이2[idx]?.leftRight ?? 0)) / 2).toFixed(4)),
+      upDown: Number(((row.upDown + (trays.트레이2[idx]?.upDown ?? 0)) / 2).toFixed(4)),
+    }));
+  }, [selectedLine, selectedTray]);
   const hasData = rows.length > 0;
 
   const recommended = useMemo(() => calcRecommendedOffsets(rows), [rows]);
@@ -91,7 +119,21 @@ export default function BottomPrintingTab() {
   );
 
   const rowSummaries = useMemo(() => rows.map((row) => toRowSummary(row)), [rows]);
-  const comments = useMemo(() => buildComments(rowSummaries), [rowSummaries]);
+  const comments = useMemo(() => {
+    const base = buildComments(rowSummaries);
+    if (selectedTray === '전체') {
+      const tray1 = lineTrayRows[selectedLine]?.트레이1 ?? [];
+      const tray2 = lineTrayRows[selectedLine]?.트레이2 ?? [];
+      if (tray1.length > 0 && tray2.length > 0) {
+        const avgTray1 = tray1.reduce((acc, row) => acc + Math.max(Math.abs(row.leftRight), Math.abs(row.upDown)), 0) / tray1.length;
+        const avgTray2 = tray2.reduce((acc, row) => acc + Math.max(Math.abs(row.leftRight), Math.abs(row.upDown)), 0) / tray2.length;
+        if (Math.abs(avgTray1 - avgTray2) > CHECK_LIMIT * 0.3) {
+          base.push(`📊 트레이1 vs 2 편차 차이: ${mmText(avgTray1 - avgTray2)}. 개별 보정 검토.`);
+        }
+      }
+    }
+    return base;
+  }, [rowSummaries, selectedLine, selectedTray]);
   const worstRow = useMemo(
     () => rowSummaries.reduce((a, b) => (Math.abs(b.worst) > Math.abs(a.worst) ? b : a), rowSummaries[0]),
     [rowSummaries],
@@ -124,19 +166,19 @@ export default function BottomPrintingTab() {
   };
 
   const sheetInfo = {
-    sheetId: `BP-2026-0213-${selectedLine === 'A라인' ? 'A01' : 'B01'}`,
-    collectedAt: selectedLine === 'A라인' ? '2026-02-13 09:32' : '-',
-    fileName: selectedLine === 'A라인' ? 'bottom_printing_sample_0213.csv' : '-',
+    sheetId: `TP-2026-0213-${selectedLine === 'A라인' ? 'A01' : 'B01'}-${selectedTray}`,
+    collectedAt: selectedLine === 'A라인' ? '2026-02-13 10:05' : '-',
+    fileName: selectedLine === 'A라인' ? 'printing-A-top-sample_0213.csv' : '-',
   };
 
   return (
     <div style={{ padding: 24, display: 'grid', gap: 20, fontFamily: 'sans-serif', background: palette.bg, color: palette.text, minHeight: '100%' }}>
       <section style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>하판 프린팅</h1>
+        <h1 style={{ margin: 0, fontSize: 24 }}>상판 프린팅</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label htmlFor="line-select" style={{ color: palette.textDim }}>라인 선택</label>
+          <label htmlFor="top-line-select" style={{ color: palette.textDim }}>라인 선택</label>
           <select
-            id="line-select"
+            id="top-line-select"
             value={selectedLine}
             onChange={(event) => setSelectedLine(event.target.value as LineKey)}
             style={{ background: palette.card, color: palette.text, border: `1px solid ${palette.border}`, borderRadius: 8, padding: '8px 10px' }}
@@ -144,13 +186,31 @@ export default function BottomPrintingTab() {
             <option value="A라인">A라인</option>
             <option value="B라인">B라인</option>
           </select>
+          <div style={{ display: 'flex', border: `1px solid ${palette.border}`, borderRadius: 8, overflow: 'hidden' }}>
+            {(['트레이1', '트레이2', '전체'] as TrayKey[]).map((tray) => (
+              <button
+                key={tray}
+                type="button"
+                onClick={() => setSelectedTray(tray)}
+                style={{
+                  background: selectedTray === tray ? palette.accent : palette.card,
+                  color: '#fff',
+                  border: 'none',
+                  padding: '8px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                {tray}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
       {!hasData && (
         <section style={{ border: `1px dashed ${palette.border}`, borderRadius: 12, padding: 24, textAlign: 'center', background: palette.card }}>
-          <h2 style={{ marginTop: 0 }}>B라인 데이터 없음</h2>
-          <p style={{ marginBottom: 0, color: palette.textDim }}>현재 샘플 데이터는 A라인만 제공됩니다. 관리자 탭 연동을 위해 데이터 구조는 A/B 분리 상태로 준비되었습니다.</p>
+          <h2 style={{ marginTop: 0 }}>선택 조건 데이터 없음</h2>
+          <p style={{ marginBottom: 0, color: palette.textDim }}>현재 샘플 데이터는 A라인 기준으로 트레이1/2만 제공됩니다. 트레이별 보정 추적 구조를 먼저 적용했습니다.</p>
         </section>
       )}
 
@@ -168,7 +228,7 @@ export default function BottomPrintingTab() {
           <div style={{ fontSize: 32, fontWeight: 700 }}>{statusCounts.NG}</div>
         </article>
         <article style={{ background: palette.card, borderRadius: 12, padding: 16, border: `1px solid ${palette.border}` }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: 14, color: palette.green }}>시트 정보</h3>
+          <h3 style={{ margin: '0 0 8px', fontSize: 14, color: palette.green }}>시트 정보 (2도 인쇄: 카본→실버)</h3>
           <div style={{ fontSize: 13, color: palette.textDim, lineHeight: 1.6 }}>
             <div>시트ID: {sheetInfo.sheetId}</div>
             <div>수집시각: {sheetInfo.collectedAt}</div>
