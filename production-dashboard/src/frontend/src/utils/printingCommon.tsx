@@ -12,6 +12,8 @@ export const palette = {
   ng: '#EF4444',
   accent: '#171C8F',
   green: '#78BE20',
+  carbon: '#F472B6',
+  insulation: '#34D399',
 };
 
 export const CHECK_LIMIT = 0.12;
@@ -162,24 +164,36 @@ export const simulateRow = (row: RowDeviation, offsets: SimulationOffsets, rowCo
   };
 };
 
-export function InlineDeviationBar({ value }: { value: number }) {
-  const status = getStatus(value);
-  const scale = 0.2;
+export function DivergingBarCell({
+  value,
+  scale = 0.2,
+  checkLimit = CHECK_LIMIT,
+  ngLimit = NG_LIMIT,
+  showDirection = false,
+  axis,
+}: {
+  value: number;
+  scale?: number;
+  checkLimit?: number;
+  ngLimit?: number;
+  showDirection?: boolean;
+  axis?: '좌우' | '상하';
+}) {
+  const status = Math.abs(value) >= ngLimit ? 'NG' : Math.abs(value) >= checkLimit ? 'CHECK' : 'OK';
   const half = 72;
   const clamped = Math.max(-scale, Math.min(scale, value));
   const width = Math.max((Math.abs(clamped) / scale) * half, 1);
   const left = clamped >= 0 ? half : half - width;
-
   const toPx = (target: number) => half + (target / scale) * half;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
       <div style={{ position: 'relative', width: half * 2, height: 14, background: '#1E293B', borderRadius: 999, border: `1px solid ${palette.border}` }}>
         <div style={{ position: 'absolute', top: 0, bottom: 0, left: half, width: 1, background: '#8aa0cf' }} />
-        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(-CHECK_LIMIT), borderLeft: `1px dashed ${CHECK}` }} />
-        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(CHECK_LIMIT), borderLeft: `1px dashed ${CHECK}` }} />
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: toPx(-NG_LIMIT), borderLeft: `1px dashed ${NG}` }} />
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: toPx(NG_LIMIT), borderLeft: `1px dashed ${NG}` }} />
+        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(-checkLimit), borderLeft: `1px dashed ${CHECK}` }} />
+        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(checkLimit), borderLeft: `1px dashed ${CHECK}` }} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: toPx(-ngLimit), borderLeft: `1px dashed ${NG}` }} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: toPx(ngLimit), borderLeft: `1px dashed ${NG}` }} />
         <div
           style={{
             position: 'absolute',
@@ -192,9 +206,14 @@ export function InlineDeviationBar({ value }: { value: number }) {
           }}
         />
       </div>
+      {showDirection && axis && <span style={{ minWidth: 34, color: palette.textDim, fontSize: 12 }}>{axisDirectionText(value, axis)}</span>}
       <span style={{ minWidth: 70, fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: palette.text }}>{mmText(value)}</span>
     </div>
   );
+}
+
+export function InlineDeviationBar({ value }: { value: number }) {
+  return <DivergingBarCell value={value} />;
 }
 
 export function BiasCompass({ leftRight: leftRightValue, upDown: upDownValue }: { leftRight: number; upDown: number }) {
@@ -216,6 +235,79 @@ export function BiasCompass({ leftRight: leftRightValue, upDown: upDownValue }: 
       <text x="44" y="84" textAnchor="middle" style={{ fontSize: 10, fill: palette.text }}>하↓</text>
       <text x="12" y="47" textAnchor="middle" style={{ fontSize: 10, fill: palette.text }}>←좌</text>
       <text x="76" y="47" textAnchor="middle" style={{ fontSize: 10, fill: palette.text }}>우→</text>
+    </svg>
+  );
+}
+
+export function BullseyeCell({ leftRight, upDown }: { leftRight: number; upDown: number }) {
+  const scale = 0.2;
+  const zones = [
+    { id: 'L', marker: '▲', x: leftRight * 1.1, y: upDown * 0.9 },
+    { id: 'C', marker: '●', x: leftRight, y: upDown },
+    { id: 'R', marker: '◆', x: leftRight * 0.9, y: upDown * 1.1 },
+  ];
+
+  return (
+    <svg width="220" height="108" viewBox="0 0 220 108" role="img" aria-label="L/C/R 치우침 도형">
+      <rect x="1" y="1" width="218" height="106" rx="10" fill={palette.card} stroke={palette.border} />
+      {[0, 1, 2].map((index) => (
+        <g key={index} transform={`translate(${22 + index * 68},18)`}>
+          <rect x="0" y="0" width="64" height="72" rx="8" fill="#0B1220" stroke={palette.border} />
+          <line x1="32" y1="8" x2="32" y2="64" stroke={palette.border} strokeDasharray="3 2" />
+          <line x1="8" y1="36" x2="56" y2="36" stroke={palette.border} strokeDasharray="3 2" />
+          <rect x={32 - (CHECK_LIMIT / scale) * 24} y={36 - (CHECK_LIMIT / scale) * 24} width={(CHECK_LIMIT / scale) * 48} height={(CHECK_LIMIT / scale) * 48} fill="none" stroke={CHECK} strokeDasharray="3 2" />
+          <rect x={32 - (NG_LIMIT / scale) * 24} y={36 - (NG_LIMIT / scale) * 24} width={(NG_LIMIT / scale) * 48} height={(NG_LIMIT / scale) * 48} fill="none" stroke={NG} strokeDasharray="2 2" />
+          <text x="32" y="84" textAnchor="middle" fill={palette.textDim} style={{ fontSize: 10 }}>{zones[index].id}</text>
+        </g>
+      ))}
+      {zones.map((zone, index) => {
+        const px = 54 + index * 68 + (Math.max(-scale, Math.min(scale, zone.x)) / scale) * 24;
+        const py = 54 - (Math.max(-scale, Math.min(scale, zone.y)) / scale) * 24;
+        const status = getStatus(Math.max(Math.abs(zone.x), Math.abs(zone.y)));
+        return <text key={zone.id} x={px} y={py} textAnchor="middle" dominantBaseline="middle" fill={getColor(status)} style={{ fontSize: 14, fontWeight: 700 }}>{zone.marker}</text>;
+      })}
+    </svg>
+  );
+}
+
+export function FourPointVizPanel({
+  before,
+  after,
+  showAfter,
+  material,
+}: {
+  before: Array<{ x: number; y: number }>;
+  after: Array<{ x: number; y: number }>;
+  showAfter: boolean;
+  material: '카본' | '절연';
+}) {
+  const active = showAfter ? after : before;
+  const color = material === '카본' ? palette.carbon : palette.insulation;
+  const anchors = [
+    { x: 32, y: 24 },
+    { x: 168, y: 24 },
+    { x: 32, y: 96 },
+    { x: 168, y: 96 },
+  ];
+
+  return (
+    <svg width="220" height="130" viewBox="0 0 220 130" role="img" aria-label="4코너 시각화">
+      <rect x="20" y="12" width="180" height="96" rx="14" fill="#0B1220" stroke={palette.border} />
+      <polyline points={anchors.map((a) => `${a.x},${a.y}`).join(' ')} fill="none" stroke={palette.border} strokeDasharray="4 3" />
+      {active.map((point, index) => {
+        const base = anchors[index];
+        return (
+          <circle
+            key={`${index}-${showAfter}`}
+            cx={base.x + point.x * 160}
+            cy={base.y - point.y * 160}
+            r="5"
+            fill={color}
+            style={{ transition: 'all 0.35s ease' }}
+          />
+        );
+      })}
+      <text x="110" y="124" textAnchor="middle" style={{ fill: palette.textDim, fontSize: 11 }}>{showAfter ? 'AFTER' : 'BEFORE'} · {material}</text>
     </svg>
   );
 }

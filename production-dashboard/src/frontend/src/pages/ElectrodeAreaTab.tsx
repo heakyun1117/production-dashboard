@@ -15,6 +15,8 @@ import {
   YAxis,
 } from 'recharts';
 
+import { DivergingBarCell, palette } from '../utils/printingCommon';
+
 type ZoneKey = 'Row1' | 'Row6' | 'Row12';
 type ZoneFilter = ZoneKey | 'All';
 type LineKey = 'A' | 'B';
@@ -372,6 +374,12 @@ export default function ElectrodeAreaTab() {
 
   const scatterData = filteredRows.map((row) => ({ ...row, zoneColor: ZONE_COLORS[row.zone] }));
 
+  const avgDeltas = useMemo(() => ({
+    width: filteredRows.reduce((acc, row) => acc + row.widthDelta, 0) / Math.max(1, filteredRows.length),
+    length: filteredRows.reduce((acc, row) => acc + row.lengthDelta, 0) / Math.max(1, filteredRows.length),
+    areaRate: filteredRows.reduce((acc, row) => acc + row.areaDeltaRate, 0) / Math.max(1, filteredRows.length),
+  }), [filteredRows]);
+
   const histogramData = useMemo(() => {
     const binSize = 0.0025;
     const minArea = Math.min(...rowsWithArea.map((row) => row.area));
@@ -454,6 +462,15 @@ export default function ElectrodeAreaTab() {
               {ZONE_LABELS[zone]}
             </button>
           ))}
+        </div>
+      </section>
+
+      <section style={{ ...sectionStyle }}>
+        <h3 style={{ marginTop: 0, color: palette.text }}>평균 편차 0-중심 바</h3>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span>전극폭 평균 편차</span><DivergingBarCell value={avgDeltas.width} scale={0.03} checkLimit={0.01} ngLimit={0.015} showDirection axis="좌우" /></div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span>전극길이 평균 편차</span><DivergingBarCell value={avgDeltas.length} scale={0.05} checkLimit={0.02} ngLimit={0.03} showDirection axis="상하" /></div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span>면적 증감률(비율)</span><DivergingBarCell value={avgDeltas.areaRate} scale={0.05} checkLimit={0.02} ngLimit={0.03} /></div>
         </div>
       </section>
 

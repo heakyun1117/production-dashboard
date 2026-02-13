@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
   Legend,
+  Line,
+  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -14,7 +13,11 @@ import {
 
 import {
   BiasCompass,
-  InlineDeviationBar,
+  BullseyeCell,
+  CHECK_LIMIT,
+  DivergingBarCell,
+  FourPointVizPanel,
+  NG_LIMIT,
   SimulationOffsets,
   Status,
   RowDeviation,
@@ -264,8 +267,9 @@ export default function BottomPrintingTab() {
       {hasData && worstRow && (
         <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
           <h2 style={{ marginTop: 0, color: palette.text }}>치우침 도형 (최대 편차 Row)</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <BiasCompass leftRight={worstRow.leftRight} upDown={worstRow.upDown} />
+            <BullseyeCell leftRight={worstRow.leftRight} upDown={worstRow.upDown} />
             <div style={{ color: palette.textDim, lineHeight: 1.7 }}>
               <div>대상 Row: {worstRow.row}</div>
               <div>최대 축: {worstRow.worstAxis}</div>
@@ -374,11 +378,11 @@ export default function BottomPrintingTab() {
                   <td>{beforeRow.row}</td>
                   <td>{mmText(beforeRow.leftRight)}</td>
                   <td>
-                    <InlineDeviationBar value={beforeRow.leftRight} />
+                    <DivergingBarCell value={beforeRow.leftRight} showDirection axis="좌우" />
                   </td>
                   <td>{mmText(beforeRow.upDown)}</td>
                   <td>
-                    <InlineDeviationBar value={beforeRow.upDown} />
+                    <DivergingBarCell value={beforeRow.upDown} showDirection axis="상하" />
                   </td>
                   <td style={{ color: marginColor(rowMargin), fontWeight: 700 }}>{`${Math.round(rowMargin)}%`}</td>
                   <td style={{ lineHeight: 1.7 }}>
@@ -401,9 +405,23 @@ export default function BottomPrintingTab() {
 
       <section style={{ border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16, background: palette.card }}>
         <h2 style={{ marginTop: 0, color: palette.text }}>Before / After 비교</h2>
-        <div style={{ width: '100%', height: 360 }}>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+          <FourPointVizPanel
+            material="카본"
+            showAfter={false}
+            before={[{ x: -0.08, y: 0.03 }, { x: 0.07, y: 0.02 }, { x: -0.05, y: -0.06 }, { x: 0.06, y: -0.04 }]}
+            after={[{ x: -0.02, y: 0.01 }, { x: 0.02, y: 0.01 }, { x: -0.01, y: -0.02 }, { x: 0.01, y: -0.02 }]}
+          />
+          <FourPointVizPanel
+            material="절연"
+            showAfter
+            before={[{ x: -0.06, y: 0.05 }, { x: 0.08, y: 0.04 }, { x: -0.03, y: -0.05 }, { x: 0.05, y: -0.03 }]}
+            after={[{ x: -0.01, y: 0.02 }, { x: 0.02, y: 0.01 }, { x: -0.01, y: -0.02 }, { x: 0.01, y: -0.01 }]}
+          />
+        </div>
+        <div style={{ width: '100%', height: 340 }}>
           <ResponsiveContainer>
-            <BarChart
+            <LineChart
               data={rows.map((row, index) => ({
                 row: row.row,
                 beforeWorst: Number(Math.max(Math.abs(row.leftRight), Math.abs(row.upDown)).toFixed(4)),
@@ -414,29 +432,17 @@ export default function BottomPrintingTab() {
               <CartesianGrid stroke={palette.border} strokeDasharray="3 3" />
               <XAxis dataKey="row" tick={{ fill: palette.textDim }} axisLine={{ stroke: palette.border }} tickLine={{ stroke: palette.border }} />
               <YAxis domain={[0, 0.2]} tickFormatter={(value) => `${value.toFixed(2)}mm`} tick={{ fill: palette.textDim }} axisLine={{ stroke: palette.border }} tickLine={{ stroke: palette.border }} />
-              <Tooltip
-                contentStyle={{ background: palette.card, border: `1px solid ${palette.border}`, color: palette.text }}
-                formatter={(value: number) => `${value.toFixed(3)} mm`}
-              />
+              <Tooltip contentStyle={{ background: palette.card, border: `1px solid ${palette.border}`, color: palette.text }} formatter={(value: number) => `${value.toFixed(3)} mm`} />
               <Legend />
-              <ReferenceLine y={CHECK_LIMIT} stroke={CHECK} strokeDasharray="5 5" label="CHECK 0.12" />
-              <ReferenceLine y={NG_LIMIT} stroke={NG} strokeDasharray="5 5" label="NG 0.15" />
-              <Bar dataKey="beforeWorst" name="Before 최대 편차" fill="#9ca3af">
-                {rows.map((row) => (
-                  <Cell key={`before-${row.row}`} fill="#9ca3af" />
-                ))}
-              </Bar>
-              <Bar dataKey="afterWorst" name="After 최대 편차">
-                {simulatedRows.map((row) => {
-                  const worst = Math.max(Math.abs(row.leftRight), Math.abs(row.upDown));
-                  return <Cell key={`after-${row.row}`} fill={getColor(getStatus(worst))} />;
-                })}
-              </Bar>
-            </BarChart>
+              <ReferenceLine y={CHECK_LIMIT} stroke={palette.check} strokeDasharray="5 5" label="CHECK 0.12" />
+              <ReferenceLine y={NG_LIMIT} stroke={palette.ng} strokeDasharray="5 5" label="NG 0.15" />
+              <Line dataKey="beforeWorst" name="Before" stroke="#94A3B8" strokeWidth={2} strokeOpacity={0.45} dot={{ r: 3 }} />
+              <Line dataKey="afterWorst" name="After" stroke={palette.accent} strokeWidth={2.6} dot={{ r: 3 }} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
         <p style={{ marginBottom: 0, color: palette.textDim }}>
-          최대 편차(절댓값): Before {summary.beforeWorst.toFixed(3)}mm → After {summary.afterWorst.toFixed(3)}mm
+          최대 편차(절댓값): Before {summary.beforeWorst.toFixed(3)}mm → After {summary.afterWorst.toFixed(3)}mm · 점수 {((1 - summary.beforeWorst / 0.2) * 100).toFixed(1)} → {((1 - summary.afterWorst / 0.2) * 100).toFixed(1)}
         </p>
       </section>
     </div>
