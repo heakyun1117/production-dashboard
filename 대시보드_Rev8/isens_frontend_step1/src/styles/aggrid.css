@@ -1,0 +1,48 @@
+/* AG Grid 기본 테마(Alpine) */
+@import "ag-grid-community/styles/ag-grid.css";
+@import "ag-grid-community/styles/ag-theme-alpine.css";
+
+/* i-SENS CI + Clean Data Studio 스타일 */
+.ag-theme-alpine {
+  --ag-font-size: 13px;
+  --ag-font-family: Inter, Pretendard, Segoe UI, Roboto, sans-serif;
+  --ag-row-height: 68px;
+  --ag-header-height: 36px;
+  --ag-border-color: rgba(0, 0, 0, 0.06);
+  --ag-row-border-color: rgba(0, 0, 0, 0.04);
+  --ag-background-color: #ffffff;
+  --ag-odd-row-background-color: #ffffff;
+  --ag-header-background-color: #fafbfc;
+  --ag-header-foreground-color: #53565A;
+  --ag-selected-row-background-color: #E8E8F4;           /* i-SENS Blue Light */
+  --ag-range-selection-background-color: rgba(23, 28, 143, 0.08);
+  --ag-row-hover-color: rgba(23, 28, 143, 0.04);
+  --ag-alpine-active-color: #171C8F;                     /* i-SENS Blue */
+}
+
+/* 셀 패딩/라인높이 — 68px 2줄 카드 대응 */
+.ag-theme-alpine .ag-cell {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+}
+
+/* 좌측 상태바 대응 — 행 좌 패딩 조정 */
+.ag-theme-alpine .ag-row {
+  border-left-width: 3px;
+  border-left-style: solid;
+  border-left-color: transparent;
+  cursor: pointer;
+}
+
+/* 더블 클릭 유도: 호버 시 시각적 피드백 강화 */
+.ag-theme-alpine .ag-row:hover {
+  background-color: rgba(23, 28, 143, 0.06) !important;
+}
+
+/* 선택된 행 배경 */
+.ag-theme-alpine .ag-row-selected {
+  background-color: #E8E8F4 !important;
+}
