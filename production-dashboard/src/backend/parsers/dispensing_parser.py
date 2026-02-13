@@ -66,7 +66,6 @@ def parse_dispensing_rows(path: Path) -> dict:
     rows = read_utf16_tab_block(path)
 
     area_values: dict[int, float] = {}
-    spacing_values: dict[int, float] = {}
 
     for row in rows:
         if len(row) < 2:
@@ -83,26 +82,22 @@ def parse_dispensing_rows(path: Path) -> dict:
 
         if "분주면적" in label:
             area_values[idx] = value
-        elif "분주간격" in label:
-            spacing_values[idx] = value
 
-    if not area_values or not spacing_values:
-        raise DispensingParseError("분주면적/분주간격 데이터를 찾지 못했습니다.")
+    if not area_values:
+        raise DispensingParseError("분주면적 데이터를 찾지 못했습니다.")
 
-    set_count = min(len(area_values) // 2, len(spacing_values))
+    set_count = len(area_values) // 2
     if set_count == 0:
-        raise DispensingParseError("면적 2개 + 간격 1개 세트 구성에 필요한 데이터가 부족합니다.")
+        raise DispensingParseError("면적 2개 세트 구성에 필요한 데이터가 부족합니다.")
 
     sets: list[dict] = []
     area_all: list[float] = []
     area_filtered: list[float] = []
-    spacing_all: list[float] = []
 
     for set_idx in range(1, set_count + 1):
         area1 = area_values.get(set_idx * 2 - 1)
         area2 = area_values.get(set_idx * 2)
-        spacing = spacing_values.get(set_idx)
-        if area1 is None or area2 is None or spacing is None:
+        if area1 is None or area2 is None:
             continue
 
         outlier1 = area1 < OUTLIER_THRESHOLD
@@ -112,8 +107,6 @@ def parse_dispensing_rows(path: Path) -> dict:
         area_avg = (area1 + area2) / 2
 
         area_all.extend([area1, area2])
-        spacing_all.append(spacing)
-
         if not outlier1:
             area_filtered.append(area1)
         if not outlier2:
@@ -125,24 +118,21 @@ def parse_dispensing_rows(path: Path) -> dict:
                 "area1": round(area1, 4),
                 "area2": round(area2, 4),
                 "areaAvg": round(area_avg, 4),
-                "spacing": round(spacing, 4),
                 "outlier": outlier,
                 "outlierAreaCount": int(outlier1) + int(outlier2),
             }
         )
 
     area_filtered_stats = _build_stats(area_filtered)
-    spacing_stats = _build_stats(spacing_all)
 
     for item in sets:
         area_status = _sigma_status(item["areaAvg"], area_filtered_stats["mean"], area_filtered_stats["stdDev"])
-        spacing_status = _sigma_status(item["spacing"], spacing_stats["mean"], spacing_stats["stdDev"])
 
         if item["outlier"]:
             item["judgement"] = "NG"
-        elif "NG" in (area_status, spacing_status):
+        elif area_status == "NG":
             item["judgement"] = "NG"
-        elif "CHECK" in (area_status, spacing_status):
+        elif area_status == "CHECK":
             item["judgement"] = "CHECK"
         else:
             item["judgement"] = "OK"
@@ -162,7 +152,6 @@ def parse_dispensing_rows(path: Path) -> dict:
         "stats": {
             "areaFiltered": area_filtered_stats,
             "areaAll": _build_stats(area_all),
-            "spacing": spacing_stats,
         },
         "rows": sets,
     }

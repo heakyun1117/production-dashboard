@@ -19,7 +19,6 @@ type DispensingRow = {
   area1: number;
   area2: number;
   areaAvg: number;
-  spacing: number;
   outlier: boolean;
   outlierAreaCount: number;
   judgement: Status;
@@ -42,7 +41,6 @@ type DispensingData = {
   stats: {
     areaFiltered: MetricStats;
     areaAll: MetricStats;
-    spacing: MetricStats;
   };
   rows: DispensingRow[];
 };
@@ -115,19 +113,8 @@ export default function DispensingTab() {
     [data],
   );
 
-  const spacingChartRows = useMemo(
-    () =>
-      (data?.rows ?? []).map((row) => ({
-        index: row.index,
-        간격: row.spacing,
-      })),
-    [data],
-  );
-
   const areaMean = activeAreaStats?.mean ?? 0;
   const areaStd = activeAreaStats?.stdDev ?? 0;
-  const spacingMean = data?.stats.spacing.mean ?? 0;
-  const spacingStd = data?.stats.spacing.stdDev ?? 0;
 
   return (
     <div style={{ padding: 24, display: 'grid', gap: 16, background: '#0a1025', color: palette.text, minHeight: '100%', fontFamily: 'sans-serif' }}>
@@ -152,7 +139,7 @@ export default function DispensingTab() {
         </ul>
       </section>
 
-      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <section style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
         <article style={{ background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 12, padding: 12 }}>
           <h3 style={{ marginTop: 0 }}>면적 분포 차트</h3>
           <div style={{ width: '100%', height: 280 }}>
@@ -172,25 +159,6 @@ export default function DispensingTab() {
             </ResponsiveContainer>
           </div>
         </article>
-
-        <article style={{ background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 12, padding: 12 }}>
-          <h3 style={{ marginTop: 0 }}>간격 분포 차트</h3>
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
-              <LineChart data={spacingChartRows}>
-                <CartesianGrid strokeDasharray="3 3" stroke={palette.border} />
-                <XAxis dataKey="index" stroke={palette.textDim} />
-                <YAxis stroke={palette.textDim} domain={['dataMin - 0.05', 'dataMax + 0.05']} />
-                <Tooltip />
-                <Legend />
-                <ReferenceArea y1={spacingMean - spacingStd} y2={spacingMean + spacingStd} fill="#2D68C4" fillOpacity={0.12} />
-                <ReferenceArea y1={spacingMean - spacingStd * 2} y2={spacingMean + spacingStd * 2} fill="#F59E0B" fillOpacity={0.08} />
-                <ReferenceLine y={spacingMean} stroke={palette.ok} label="평균" />
-                <Line type="monotone" dataKey="간격" stroke={palette.accent} dot={{ r: 2 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </article>
       </section>
 
       <section style={{ background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 12, padding: 16 }}>
@@ -198,7 +166,7 @@ export default function DispensingTab() {
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${palette.border}`, color: palette.textDim }}>
-              <th>#</th><th>면적1</th><th>면적2</th><th>면적평균</th><th>면적 바</th><th>간격</th><th>간격 바</th><th>판정</th>
+              <th>#</th><th>면적1</th><th>면적2</th><th>면적평균</th><th>면적 바</th><th>판정</th>
             </tr>
           </thead>
           <tbody>
@@ -209,8 +177,6 @@ export default function DispensingTab() {
                 <td>{row.area2.toFixed(4)}</td>
                 <td>{row.areaAvg.toFixed(4)}</td>
                 <td><DivergingBarCell value={row.areaAvg - areaMean} scale={0.5} checkLimit={areaStd || 0.1} ngLimit={(areaStd || 0.1) * 2} formatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(3)}`} /></td>
-                <td>{row.spacing.toFixed(4)}</td>
-                <td><DivergingBarCell value={row.spacing - spacingMean} scale={0.35} checkLimit={spacingStd || 0.05} ngLimit={(spacingStd || 0.05) * 2} formatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(3)}`} /></td>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                     {row.outlier && <span style={{ background: palette.ng, borderRadius: 999, padding: '2px 6px', fontSize: 11, fontWeight: 700 }}>이상치</span>}
@@ -229,20 +195,13 @@ export default function DispensingTab() {
           <input type="checkbox" checked={includeOutliers} onChange={(e) => setIncludeOutliers(e.target.checked)} />
           면적 통계에 이상치 포함
         </label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
           <div style={{ border: `1px solid ${palette.border}`, borderRadius: 8, padding: 10 }}>
             <h4 style={{ margin: '0 0 8px' }}>면적 {includeOutliers ? '(포함)' : '(제외)'}</h4>
             <div>평균: {numberText(activeAreaStats?.mean ?? 0, 'mm²')}</div>
             <div>표준편차: {numberText(activeAreaStats?.stdDev ?? 0, 'mm²')}</div>
             <div>최소~최대: {(activeAreaStats?.min ?? 0).toFixed(4)} ~ {(activeAreaStats?.max ?? 0).toFixed(4)}</div>
             <div>CV: {(activeAreaStats?.cv ?? 0).toFixed(2)}%</div>
-          </div>
-          <div style={{ border: `1px solid ${palette.border}`, borderRadius: 8, padding: 10 }}>
-            <h4 style={{ margin: '0 0 8px' }}>간격</h4>
-            <div>평균: {numberText(data?.stats.spacing.mean ?? 0, 'mm')}</div>
-            <div>표준편차: {numberText(data?.stats.spacing.stdDev ?? 0, 'mm')}</div>
-            <div>최소~최대: {(data?.stats.spacing.min ?? 0).toFixed(4)} ~ {(data?.stats.spacing.max ?? 0).toFixed(4)}</div>
-            <div>CV: {(data?.stats.spacing.cv ?? 0).toFixed(2)}%</div>
           </div>
         </div>
       </section>
