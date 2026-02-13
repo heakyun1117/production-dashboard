@@ -27,6 +27,8 @@ export type RowDeviation = {
   upDown: number;
 };
 
+export type CornerPoint = { x: number; y: number };
+
 export type RowSummary = RowDeviation & {
   worst: number;
   worstAxis: '좌우' | '상하';
@@ -88,7 +90,7 @@ export function buildComments(rows: RowSummary[]): string[] {
   const ngRows = rows.filter((row) => row.status === 'NG');
   if (ngRows.length > 0) {
     const target = ngRows.reduce((a, b) => (Math.abs(b.worst) > Math.abs(a.worst) ? b : a));
-    comments.push(`🔴 Row ${target.row} ${target.worstAxis} ${mmText(target.worst)} — NG. 즉시 보정 필요.`);
+    comments.push(`🔴 Row ${target.row} ${target.worstAxis} ${mmText(target.worst)} — NG. 즉시 보정: ${correctionText(-target.worst, target.worstAxis)}.`);
   }
 
   const checkRows = rows.filter((row) => row.status === 'CHECK');
@@ -164,6 +166,21 @@ export const simulateRow = (row: RowDeviation, offsets: SimulationOffsets, rowCo
   };
 };
 
+export const extractCorners = (rows: RowDeviation[]): CornerPoint[] => {
+  const findRow = (rowNumber: number) => rows.find((row) => row.row === rowNumber) ?? { row: rowNumber, leftRight: 0, upDown: 0 };
+  const row1 = findRow(1);
+  const row6 = findRow(6);
+  const row7 = findRow(7);
+  const row12 = findRow(12);
+
+  return [
+    { x: row1.leftRight, y: row1.upDown },
+    { x: row7.leftRight, y: row7.upDown },
+    { x: row6.leftRight, y: row6.upDown },
+    { x: row12.leftRight, y: row12.upDown },
+  ];
+};
+
 export function DivergingBarCell({
   value,
   scale = 0.2,
@@ -171,6 +188,7 @@ export function DivergingBarCell({
   ngLimit = NG_LIMIT,
   showDirection = false,
   axis,
+  formatter = mmText,
 }: {
   value: number;
   scale?: number;
@@ -178,6 +196,7 @@ export function DivergingBarCell({
   ngLimit?: number;
   showDirection?: boolean;
   axis?: '좌우' | '상하';
+  formatter?: (value: number) => string;
 }) {
   const status = Math.abs(value) >= ngLimit ? 'NG' : Math.abs(value) >= checkLimit ? 'CHECK' : 'OK';
   const half = 72;
@@ -190,10 +209,10 @@ export function DivergingBarCell({
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
       <div style={{ position: 'relative', width: half * 2, height: 14, background: '#1E293B', borderRadius: 999, border: `1px solid ${palette.border}` }}>
         <div style={{ position: 'absolute', top: 0, bottom: 0, left: half, width: 1, background: '#8aa0cf' }} />
-        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(-checkLimit), borderLeft: `1px dashed ${CHECK}` }} />
-        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(checkLimit), borderLeft: `1px dashed ${CHECK}` }} />
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: toPx(-ngLimit), borderLeft: `1px dashed ${NG}` }} />
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: toPx(ngLimit), borderLeft: `1px dashed ${NG}` }} />
+        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(-checkLimit), borderLeft: `1px dashed ${CHECK}`, borderLeftWidth: 1 }} />
+        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(checkLimit), borderLeft: `1px dashed ${CHECK}`, borderLeftWidth: 1 }} />
+        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(-ngLimit), borderLeft: `1px dashed ${NG}`, borderLeftWidth: 1 }} />
+        <div style={{ position: 'absolute', top: 1, bottom: 1, left: toPx(ngLimit), borderLeft: `1px dashed ${NG}`, borderLeftWidth: 1 }} />
         <div
           style={{
             position: 'absolute',
@@ -207,7 +226,7 @@ export function DivergingBarCell({
         />
       </div>
       {showDirection && axis && <span style={{ minWidth: 34, color: palette.textDim, fontSize: 12 }}>{axisDirectionText(value, axis)}</span>}
-      <span style={{ minWidth: 70, fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: palette.text }}>{mmText(value)}</span>
+      <span style={{ minWidth: 70, fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: palette.text }}>{formatter(value)}</span>
     </div>
   );
 }
@@ -264,7 +283,12 @@ export function BullseyeCell({ leftRight, upDown }: { leftRight: number; upDown:
         const px = 54 + index * 68 + (Math.max(-scale, Math.min(scale, zone.x)) / scale) * 24;
         const py = 54 - (Math.max(-scale, Math.min(scale, zone.y)) / scale) * 24;
         const status = getStatus(Math.max(Math.abs(zone.x), Math.abs(zone.y)));
-        return <text key={zone.id} x={px} y={py} textAnchor="middle" dominantBaseline="middle" fill={getColor(status)} style={{ fontSize: 14, fontWeight: 700 }}>{zone.marker}</text>;
+        return (
+          <g key={zone.id}>
+            <circle cx={px} cy={py} r="6" fill={getColor(status)} />
+            <text x={px} y={py} textAnchor="middle" dominantBaseline="middle" fill="#0B1220" style={{ fontSize: 10, fontWeight: 700 }}>{zone.marker}</text>
+          </g>
+        );
       })}
     </svg>
   );
@@ -303,7 +327,7 @@ export function FourPointVizPanel({
             cy={base.y - point.y * 160}
             r="5"
             fill={color}
-            style={{ transition: 'all 0.35s ease' }}
+            style={{ transition: 'all 0.3s ease' }}
           />
         );
       })}

@@ -17,11 +17,13 @@ import {
   CHECK_LIMIT,
   DivergingBarCell,
   FourPointVizPanel,
+  NG_LIMIT,
   SimulationOffsets,
   Status,
   RowDeviation,
   axisDirectionText,
   buildComments,
+  extractCorners,
   calcRecommendedOffsets,
   correctionText,
   getColor,
@@ -127,6 +129,9 @@ export default function TopPrintingTab() {
     () => rows.map((row) => simulateRow(row, offsets, rows.length)),
     [offsets, rows],
   );
+
+  const beforeCorners = useMemo(() => extractCorners(rows), [rows]);
+  const afterCorners = useMemo(() => extractCorners(simulatedRows), [simulatedRows]);
 
   const rowSummaries = useMemo(() => rows.map((row) => toRowSummary(row)), [rows]);
   const comments = useMemo(() => {
@@ -463,14 +468,14 @@ export default function TopPrintingTab() {
           <FourPointVizPanel
             material="카본"
             showAfter={false}
-            before={[{ x: -0.06, y: 0.03 }, { x: 0.05, y: 0.03 }, { x: -0.04, y: -0.04 }, { x: 0.04, y: -0.03 }]}
-            after={[{ x: -0.02, y: 0.01 }, { x: 0.01, y: 0.01 }, { x: -0.01, y: -0.02 }, { x: 0.01, y: -0.01 }]}
+            before={beforeCorners}
+            after={afterCorners}
           />
           <FourPointVizPanel
             material="절연"
             showAfter
-            before={[{ x: -0.05, y: 0.04 }, { x: 0.06, y: 0.03 }, { x: -0.03, y: -0.03 }, { x: 0.03, y: -0.04 }]}
-            after={[{ x: -0.01, y: 0.01 }, { x: 0.01, y: 0.01 }, { x: -0.01, y: -0.01 }, { x: 0.01, y: -0.01 }]}
+            before={beforeCorners}
+            after={afterCorners}
           />
         </div>
         <div style={{ width: '100%', height: 340 }}>
@@ -489,7 +494,7 @@ export default function TopPrintingTab() {
               <Tooltip contentStyle={{ background: palette.card, border: `1px solid ${palette.border}`, color: palette.text }} formatter={(value: number) => `${value.toFixed(3)} mm`} />
               <Legend />
               <ReferenceLine y={CHECK_LIMIT} stroke={palette.check} strokeDasharray="5 5" label="CHECK 0.12" />
-              <ReferenceLine y={0.15} stroke={palette.ng} strokeDasharray="5 5" label="NG 0.15" />
+              <ReferenceLine y={NG_LIMIT} stroke={palette.ng} strokeDasharray="5 5" label="NG 0.15" />
               <Line dataKey="beforeWorst" name="Before" stroke="#94A3B8" strokeWidth={2} strokeOpacity={0.45} dot={{ r: 3 }} />
               <Line dataKey="afterWorst" name="After" stroke={palette.accent} strokeWidth={2.6} dot={{ r: 3 }} />
             </LineChart>

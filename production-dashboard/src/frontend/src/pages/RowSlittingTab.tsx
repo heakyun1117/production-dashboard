@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-import { DivergingBarCell, getColor, mmText, palette, Status } from '../utils/printingCommon';
+import { DivergingBarCell, correctionText, getColor, mmText, palette, Status } from '../utils/printingCommon';
 
 type LineKey = 'A라인' | 'B라인';
 type Position = '우' | '중' | '좌';
@@ -52,6 +52,10 @@ const getSlittingStatus = (value: number): Status => {
 const marginRate = (value: number) => ((NG_LIMIT - Math.abs(value)) / NG_LIMIT) * 100;
 
 function buildComments(data: SlitterMeasurement[]): string[] {
+  if (data.length === 0) {
+    return ['📭 로우슬리팅 측정 데이터가 없습니다.'];
+  }
+
   const comments: string[] = [];
   const byRow = rows.map((row) => ({
     row,
@@ -74,6 +78,11 @@ function buildComments(data: SlitterMeasurement[]): string[] {
   const rightAvg = data.filter((d) => d.position === '우').reduce((acc, d) => acc + Math.abs(d.totalWidth), 0) / 3;
   if (leftAvg > rightAvg) {
     comments.push('📊 좌측 편차가 우측보다 큼. 시트 이송 정렬 확인.');
+  }
+
+  const worstTotal = data.reduce((acc, item) => (Math.abs(item.totalWidth) > Math.abs(acc.totalWidth) ? item : acc), data[0]);
+  if (worstTotal) {
+    comments.unshift(`🧭 즉시 보정: Row ${worstTotal.row} ${worstTotal.position} 전체폭 ${mmText(worstTotal.totalWidth)} → ${correctionText(-worstTotal.totalWidth, '좌우')}`);
   }
 
   if (comments.length === 0) {
